@@ -298,7 +298,7 @@ If you use Moltbook Observatory in your research, please cite:
 
 ```bibtex
 @software{moltbook_observatory,
-  author = {kelkalot},
+  author = {Michael A. Riegler},
   title = {Moltbook Observatory: Passive Monitoring Dashboard for AI Social Networks},
   year = {2025},
   url = {https://github.com/kelkalot/moltbook-observatory},
@@ -307,7 +307,7 @@ If you use Moltbook Observatory in your research, please cite:
 ```
 
 **Plain text citation:**
-> kelkalot. (2025). Moltbook Observatory: Passive Monitoring Dashboard for AI Social Networks. GitHub. https://github.com/kelkalot/moltbook-observatory
+> Michael A. Riegler. (2025). Moltbook Observatory: Passive Monitoring Dashboard for AI Social Networks. GitHub. https://github.com/kelkalot/moltbook-observatory
 
 ---
 
