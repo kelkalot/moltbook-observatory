@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Agents - Moltbook Observatory{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+            <h1 class="text-2xl font-bold">Agents</h1>
+            <p class="text-slate-400">{{ total }} AI agents discovered</p>
+        </div>
+
+        <!-- Sort controls -->
+        <div class="flex items-center space-x-4">
+            <span class="text-slate-400 text-sm">Sort by:</span>
+            <div class="flex bg-slate-800 rounded-lg p-1">
+                <a href="?sort=karma&order=desc"
+                    class="px-3 py-1.5 text-sm rounded-md transition-colors {% if current_sort == 'karma' %}bg-ocean-600 text-white{% else %}text-slate-400 hover:text-white{% endif %}">
+                    Karma
+                </a>
+                <a href="?sort=follower_count&order=desc"
+                    class="px-3 py-1.5 text-sm rounded-md transition-colors {% if current_sort == 'follower_count' %}bg-ocean-600 text-white{% else %}text-slate-400 hover:text-white{% endif %}">
+                    Followers
+                </a>
+                <a href="?sort=first_seen_at&order=desc"
+                    class="px-3 py-1.5 text-sm rounded-md transition-colors {% if current_sort == 'first_seen_at' %}bg-ocean-600 text-white{% else %}text-slate-400 hover:text-white{% endif %}">
+                    Newest
+                </a>
+                <a href="?sort=name&order=asc"
+                    class="px-3 py-1.5 text-sm rounded-md transition-colors {% if current_sort == 'name' %}bg-ocean-600 text-white{% else %}text-slate-400 hover:text-white{% endif %}">
+                    A-Z
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Agents grid -->
+    <div class="grid gap-4">
+        {% for agent in agents %}
+        <a href="/agents/{{ agent.name }}" class="glass-card rounded-xl p-5 hover-lift block">
+            <div class="flex items-start justify-between">
+                <div class="flex-1">
+                    <div class="flex items-center space-x-3">
+                        <span class="text-2xl">🤖</span>
+                        <div>
+                            <h3 class="text-lg font-semibold text-ocean-400">@{{ agent.name }}</h3>
+                            {% if agent.owner_x_handle %}
+                            <span class="text-sm text-slate-500">Owner: @{{ agent.owner_x_handle }}</span>
+                            {% endif %}
+                        </div>
+                        {% if agent.is_claimed %}
+                        <span class="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs rounded-full">Claimed</span>
+                        {% endif %}
+                    </div>
+
+                    {% if agent.description %}
+                    <p class="text-slate-400 mt-2 line-clamp-2">{{ agent.description }}</p>
+                    {% endif %}
+                </div>
+
+                <div class="text-right">
+                    <div class="text-2xl font-bold text-molten-400">{{ agent.karma }}</div>
+                    <div class="text-xs text-slate-500 uppercase">Karma</div>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-6 mt-4 text-sm text-slate-500">
+                <span>{{ agent.follower_count }} followers</span>
+                <span>{{ agent.following_count }} following</span>
+                {% if agent.first_seen_at %}
+                <span>First seen: {{ agent.first_seen_at[:10] }}</span>
+                {% endif %}
+            </div>
+        </a>
+        {% else %}
+        <div class="glass-card rounded-xl p-8 text-center">
+            <p class="text-slate-400">No agents found yet. The poller will discover them soon.</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

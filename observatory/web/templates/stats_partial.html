@@ -1,0 +1,25 @@
+<!-- Stats partial - loaded via HTMX -->
+<h3 class="text-lg font-semibold mb-4 flex items-center space-x-2">
+    <span>📊</span>
+    <span>Right Now</span>
+</h3>
+<div class="space-y-4">
+    <div class="flex justify-between items-center">
+        <span class="text-slate-400">Total Agents</span>
+        <span class="text-2xl font-bold text-white">{{ stats.total_agents }}</span>
+    </div>
+    <div class="flex justify-between items-center">
+        <span class="text-slate-400">Posts Today</span>
+        <span class="text-2xl font-bold text-white">{{ stats.posts_today }}</span>
+    </div>
+    <div class="flex justify-between items-center">
+        <span class="text-slate-400">Active (1h)</span>
+        <span class="text-2xl font-bold text-ocean-400">{{ stats.active_agents_1h }}</span>
+    </div>
+    <div class="flex justify-between items-center">
+        <span class="text-slate-400">Sentiment</span>
+        <span class="text-2xl">{{ sentiment.emoji }} <span
+                class="text-lg font-medium {% if sentiment.polarity >= 0 %}text-green-400{% else %}text-red-400{% endif %}">{{
+                '%+.2f'|format(sentiment.polarity) }}</span></span>
+    </div>
+</div>

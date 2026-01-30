@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Moltbook Observatory{% endblock %}</title>
+    <meta name="description"
+        content="Passive monitoring and analytics dashboard for Moltbook - the social network for AI agents">
+
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        'molten': {
+                            50: '#fef3f2',
+                            100: '#fee4e2',
+                            200: '#ffcdc9',
+                            300: '#fda4a1',
+                            400: '#f97066',
+                            500: '#f04438',
+                            600: '#de3024',
+                            700: '#ba241a',
+                            800: '#9a221a',
+                            900: '#80231c',
+                        },
+                        'ocean': {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- HTMX from CDN -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+
+    <!-- Custom styles -->
+    <link rel="stylesheet" href="/static/css/style.css">
+
+    <style>
+        /* Glassmorphism card effect */
+        .glass-card {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        /* Gradient text */
+        .gradient-text {
+            background: linear-gradient(135deg, #f97066 0%, #0ea5e9 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* Fade in animation */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-out forwards;
+        }
+
+        /* Hover lift effect */
+        .hover-lift {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .hover-lift:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Pulse animation for live indicator */
+        @keyframes pulse-glow {
+
+            0%,
+            100% {
+                box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+            }
+
+            50% {
+                box-shadow: 0 0 0 8px rgba(34, 197, 94, 0);
+            }
+        }
+
+        .pulse-live {
+            animation: pulse-glow 2s infinite;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+    <!-- Navigation -->
+    <nav class="sticky top-0 z-50 glass-card border-b border-slate-700/50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center space-x-4">
+                    <a href="/" class="flex items-center space-x-2">
+                        <span class="text-2xl">🔭</span>
+                        <span class="text-xl font-bold gradient-text">Moltbook Observatory</span>
+                    </a>
+                </div>
+
+                <div class="hidden md:flex items-center space-x-6">
+                    <a href="/"
+                        class="text-slate-300 hover:text-white transition-colors {% if request.url.path == '/' %}text-white font-medium{% endif %}">
+                        Dashboard
+                    </a>
+                    <a href="/agents"
+                        class="text-slate-300 hover:text-white transition-colors {% if '/agents' in request.url.path %}text-white font-medium{% endif %}">
+                        Agents
+                    </a>
+                    <a href="/submolts"
+                        class="text-slate-300 hover:text-white transition-colors {% if request.url.path == '/submolts' %}text-white font-medium{% endif %}">
+                        Submolts
+                    </a>
+                    <a href="/trends"
+                        class="text-slate-300 hover:text-white transition-colors {% if request.url.path == '/trends' %}text-white font-medium{% endif %}">
+                        Trends
+                    </a>
+                    <a href="/export"
+                        class="text-slate-300 hover:text-white transition-colors {% if request.url.path == '/export' %}text-white font-medium{% endif %}">
+                        Export
+                    </a>
+                </div>
+
+                <div class="flex items-center space-x-3">
+                    <span class="flex items-center space-x-2 text-sm text-green-400">
+                        <span class="w-2 h-2 bg-green-400 rounded-full pulse-live"></span>
+                        <span>Live</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800 mt-16">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div class="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
+                <div class="text-slate-500 text-sm">
+                    Moltbook Observatory — Passive research monitoring for <a href="https://moltbook.com"
+                        class="text-ocean-400 hover:text-ocean-300" target="_blank">Moltbook</a>
+                </div>
+                <div class="flex space-x-6 text-sm text-slate-500">
+                    <a href="/api/stats" class="hover:text-slate-300">API</a>
+                    <a href="/export" class="hover:text-slate-300">Export Data</a>
+                    <a href="https://github.com/kelkalot/moltbook-observatory" class="hover:text-slate-300">GitHub</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    {% block scripts %}{% endblock %}
+</body>
+
+</html>

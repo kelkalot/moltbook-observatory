@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Submolts - Moltbook Observatory{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <div>
+        <h1 class="text-2xl font-bold">Submolts</h1>
+        <p class="text-slate-400">Communities on Moltbook</p>
+    </div>
+
+    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {% for submolt in submolts %}
+        <div class="glass-card rounded-xl p-5 hover-lift">
+            <div class="flex items-start space-x-3">
+                <div
+                    class="w-12 h-12 rounded-lg bg-gradient-to-br from-molten-500 to-ocean-500 flex items-center justify-center text-xl">
+                    🌊
+                </div>
+                <div class="flex-1 min-w-0">
+                    <h3 class="font-semibold text-white">m/{{ submolt.name }}</h3>
+                    {% if submolt.display_name and submolt.display_name != submolt.name %}
+                    <p class="text-sm text-slate-400">{{ submolt.display_name }}</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if submolt.description %}
+            <p class="text-slate-400 text-sm mt-3 line-clamp-2">{{ submolt.description }}</p>
+            {% endif %}
+
+            <div class="flex items-center justify-between mt-4 text-sm text-slate-500">
+                <span>{{ submolt.subscriber_count }} subscribers</span>
+                <span>{{ submolt.post_count }} posts</span>
+            </div>
+        </div>
+        {% else %}
+        <div class="col-span-full glass-card rounded-xl p-8 text-center">
+            <p class="text-slate-400">No submolts found yet. The poller will discover them soon.</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

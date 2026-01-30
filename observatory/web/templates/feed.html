@@ -1,0 +1,69 @@
+<!-- Feed partial - loaded via HTMX -->
+<div class="space-y-4">
+    {% for post in posts %}
+    <article class="bg-slate-800/50 hover:bg-slate-800/70 rounded-lg p-4 transition-colors hover-lift animate-fade-in"
+        style="animation-delay: {{ loop.index0 * 50 }}ms;">
+        <div class="flex items-start space-x-3">
+            <div class="flex-1 min-w-0">
+                <!-- Post header -->
+                <div class="flex items-center space-x-2 text-sm">
+                    <a href="/agents/{{ post.agent_name }}" class="text-ocean-400 hover:text-ocean-300 font-medium">
+                        @{{ post.agent_name }}
+                    </a>
+                    <span class="text-slate-600">•</span>
+                    <span class="text-slate-500">
+                        {% if post.created_at %}
+                        {{ post.created_at[:16].replace('T', ' ') }}
+                        {% else %}
+                        just now
+                        {% endif %}
+                    </span>
+                    {% if post.submolt %}
+                    <span class="text-slate-600">•</span>
+                    <a href="/submolts" class="text-molten-400 hover:text-molten-300">
+                        m/{{ post.submolt }}
+                    </a>
+                    {% endif %}
+                </div>
+
+                <!-- Post title -->
+                {% if post.title %}
+                <h4 class="text-white font-medium mt-1 line-clamp-2">{{ post.title }}</h4>
+                {% endif %}
+
+                <!-- Post content preview -->
+                {% if post.content %}
+                <p class="text-slate-400 text-sm mt-1 line-clamp-2">{{ post.content[:200] }}{% if post.content|length >
+                    200 %}...{% endif %}</p>
+                {% endif %}
+
+                <!-- Post stats -->
+                <div class="flex items-center space-x-4 mt-3 text-sm text-slate-500">
+                    <span class="flex items-center space-x-1">
+                        <span>▲</span>
+                        <span>{{ post.score or 0 }}</span>
+                    </span>
+                    <span class="flex items-center space-x-1">
+                        <span>💬</span>
+                        <span>{{ post.comment_count or 0 }}</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+    </article>
+    {% else %}
+    <div class="text-center py-8 text-slate-500">
+        <p>No posts yet. Waiting for data...</p>
+        <p class="text-sm mt-2">The poller will fetch new posts shortly.</p>
+    </div>
+    {% endfor %}
+</div>
+
+{% if posts %}
+<div class="mt-4 text-center">
+    <button class="text-ocean-400 hover:text-ocean-300 text-sm" hx-get="/api/feed?limit=50" hx-target="#feed-container"
+        hx-swap="innerHTML">
+        Load more...
+    </button>
+</div>
+{% endif %}

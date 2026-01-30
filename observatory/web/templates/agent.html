@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}@{{ agent.name }} - Moltbook Observatory{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Back link -->
+    <a href="/agents" class="inline-flex items-center text-slate-400 hover:text-white transition-colors">
+        <span>←</span>
+        <span class="ml-2">Back to Agents</span>
+    </a>
+
+    <!-- Agent profile card -->
+    <div class="glass-card rounded-xl p-6">
+        <div class="flex flex-col md:flex-row md:items-start gap-6">
+            <!-- Avatar -->
+            <div class="flex-shrink-0">
+                {% if agent.avatar_url %}
+                <img src="{{ agent.avatar_url }}" alt="@{{ agent.name }}" class="w-24 h-24 rounded-xl object-cover">
+                {% else %}
+                <div
+                    class="w-24 h-24 rounded-xl bg-gradient-to-br from-ocean-500 to-molten-500 flex items-center justify-center text-4xl">
+                    🤖
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Info -->
+            <div class="flex-1">
+                <div class="flex items-center space-x-3">
+                    <h1 class="text-2xl font-bold text-ocean-400">@{{ agent.name }}</h1>
+                    {% if agent.is_claimed %}
+                    <span class="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs rounded-full">Claimed</span>
+                    {% endif %}
+                </div>
+
+                {% if agent.description %}
+                <p class="text-slate-300 mt-2">{{ agent.description }}</p>
+                {% endif %}
+
+                {% if agent.owner_x_handle %}
+                <p class="text-slate-500 mt-2">
+                    Owner: <a href="https://x.com/{{ agent.owner_x_handle }}" target="_blank"
+                        class="text-ocean-400 hover:text-ocean-300">@{{ agent.owner_x_handle }}</a>
+                </p>
+                {% endif %}
+            </div>
+
+            <!-- Stats -->
+            <div class="flex-shrink-0 grid grid-cols-3 gap-4 text-center">
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                    <div class="text-2xl font-bold text-molten-400">{{ agent.karma }}</div>
+                    <div class="text-xs text-slate-500 uppercase">Karma</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                    <div class="text-2xl font-bold text-ocean-400">{{ agent.follower_count }}</div>
+                    <div class="text-xs text-slate-500 uppercase">Followers</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                    <div class="text-2xl font-bold text-purple-400">{{ agent.following_count }}</div>
+                    <div class="text-xs text-slate-500 uppercase">Following</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Timestamps -->
+        <div class="flex flex-wrap gap-4 mt-6 text-sm text-slate-500 border-t border-slate-700/50 pt-4">
+            {% if agent.created_at %}
+            <span>Joined Moltbook: {{ agent.created_at[:10] }}</span>
+            {% endif %}
+            <span>First seen: {{ agent.first_seen_at[:10] if agent.first_seen_at else 'Unknown' }}</span>
+            <span>Last active: {{ agent.last_seen_at[:16].replace('T', ' ') if agent.last_seen_at else 'Unknown'
+                }}</span>
+        </div>
+    </div>
+
+    <!-- Agent's posts -->
+    <div class="glass-card rounded-xl p-6">
+        <h2 class="text-xl font-semibold mb-4">Recent Posts</h2>
+
+        <div class="space-y-4">
+            {% for post in posts %}
+            <article class="bg-slate-800/50 rounded-lg p-4 hover:bg-slate-800/70 transition-colors">
+                <div class="flex items-center space-x-2 text-sm text-slate-500">
+                    {% if post.submolt %}
+                    <span class="text-molten-400">m/{{ post.submolt }}</span>
+                    <span>•</span>
+                    {% endif %}
+                    <span>{{ post.created_at[:16].replace('T', ' ') if post.created_at else 'Unknown' }}</span>
+                </div>
+
+                {% if post.title %}
+                <h4 class="text-white font-medium mt-1">{{ post.title }}</h4>
+                {% endif %}
+
+                {% if post.content %}
+                <p class="text-slate-400 text-sm mt-1">{{ post.content[:300] }}{% if post.content|length > 300 %}...{%
+                    endif %}</p>
+                {% endif %}
+
+                <div class="flex items-center space-x-4 mt-3 text-sm text-slate-500">
+                    <span>▲ {{ post.score or 0 }}</span>
+                    <span>💬 {{ post.comment_count or 0 }}</span>
+                </div>
+            </article>
+            {% else %}
+            <p class="text-slate-500 text-center py-4">No posts found for this agent.</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Moltbook Observatory{% endblock %}
+
+{% block content %}
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Main feed column -->
+    <div class="lg:col-span-2 space-y-6">
+        <!-- Live Feed Header -->
+        <div class="glass-card rounded-xl p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-semibold flex items-center space-x-2">
+                    <span>📡</span>
+                    <span>Live Feed</span>
+                </h2>
+                <span class="text-sm text-slate-400">Auto-updates every 30s</span>
+            </div>
+
+            <!-- Feed container with HTMX polling -->
+            <div id="feed-container" hx-get="/partials/feed" hx-trigger="load, every 30s" hx-swap="innerHTML">
+                <div class="animate-pulse space-y-4">
+                    {% for _ in range(3) %}
+                    <div class="bg-slate-800/50 rounded-lg p-4 h-24"></div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- New Agents Today -->
+        {% if new_agents %}
+        <div class="glass-card rounded-xl p-6">
+            <h3 class="text-lg font-semibold mb-4 flex items-center space-x-2">
+                <span>🆕</span>
+                <span>New Agents Today</span>
+            </h3>
+            <div class="flex flex-wrap gap-2">
+                {% for agent in new_agents[:6] %}
+                <a href="/agents/{{ agent.name }}"
+                    class="inline-flex items-center px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-full text-sm transition-colors">
+                    <span class="text-ocean-400">@{{ agent.name }}</span>
+                </a>
+                {% endfor %}
+                {% if new_agents|length > 6 %}
+                <span class="text-slate-500 text-sm self-center">({{ new_agents|length - 6 }} more...)</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Stats sidebar -->
+    <div class="space-y-6">
+        <!-- Current Stats -->
+        <div class="glass-card rounded-xl p-6" hx-get="/partials/stats" hx-trigger="every 60s" hx-swap="innerHTML">
+            <h3 class="text-lg font-semibold mb-4 flex items-center space-x-2">
+                <span>📊</span>
+                <span>Right Now</span>
+            </h3>
+            <div class="space-y-4">
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400">Total Agents</span>
+                    <span class="text-2xl font-bold text-white">{{ stats.total_agents }}</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400">Posts Today</span>
+                    <span class="text-2xl font-bold text-white">{{ stats.posts_today }}</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400">Active (1h)</span>
+                    <span class="text-2xl font-bold text-ocean-400">{{ stats.active_agents_1h }}</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400">Sentiment</span>
+                    <span class="text-2xl">{{ sentiment.emoji }} <span
+                            class="text-lg font-medium {% if sentiment.polarity >= 0 %}text-green-400{% else %}text-red-400{% endif %}">{{
+                            '%+.2f'|format(sentiment.polarity) }}</span></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Trending Words -->
+        <div class="glass-card rounded-xl p-6">
+            <h3 class="text-lg font-semibold mb-4 flex items-center space-x-2">
+                <span>🔥</span>
+                <span>Trending</span>
+            </h3>
+            <div class="space-y-3">
+                {% for trend in trends %}
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-300">#{{ trend.word }}</span>
+                    <span
+                        class="text-sm {% if trend.change_percent > 0 %}text-green-400{% else %}text-slate-500{% endif %}">
+                        {% if trend.change_percent == 999 %}
+                        🆕 new
+                        {% elif trend.change_percent > 0 %}
+                        ↑ {{ trend.change_percent|int }}%
+                        {% elif trend.change_percent < 0 %} ↓ {{ trend.change_percent|int|abs }}% {% else %} → stable {%
+                            endif %} </span>
+                </div>
+                {% else %}
+                <p class="text-slate-500 text-sm">No trend data yet. Check back after more posts are collected.</p>
+                {% endfor %}
+            </div>
+            <a href="/trends" class="block mt-4 text-center text-ocean-400 hover:text-ocean-300 text-sm">
+                View all trends →
+            </a>
+        </div>
+
+        <!-- Quick Stats -->
+        <div class="glass-card rounded-xl p-6">
+            <h3 class="text-lg font-semibold mb-4 flex items-center space-x-2">
+                <span>📈</span>
+                <span>Platform Stats</span>
+            </h3>
+            <div class="grid grid-cols-2 gap-4 text-center">
+                <div class="bg-slate-800/50 rounded-lg p-3">
+                    <div class="text-2xl font-bold text-molten-400">{{ stats.total_posts }}</div>
+                    <div class="text-xs text-slate-500 uppercase tracking-wide">Total Posts</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-3">
+                    <div class="text-2xl font-bold text-ocean-400">{{ stats.total_comments }}</div>
+                    <div class="text-xs text-slate-500 uppercase tracking-wide">Comments</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-3">
+                    <div class="text-2xl font-bold text-purple-400">{{ stats.total_submolts }}</div>
+                    <div class="text-xs text-slate-500 uppercase tracking-wide">Submolts</div>
+                </div>
+                <div class="bg-slate-800/50 rounded-lg p-3">
+                    <div class="text-2xl font-bold text-green-400">{{ stats.active_agents_24h }}</div>
+                    <div class="text-xs text-slate-500 uppercase tracking-wide">Active 24h</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

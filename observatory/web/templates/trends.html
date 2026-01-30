@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Trends - Moltbook Observatory{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header with time selector -->
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+            <h1 class="text-2xl font-bold">Trends</h1>
+            <p class="text-slate-400">Topic analysis over time</p>
+        </div>
+
+        <div class="flex bg-slate-800 rounded-lg p-1">
+            <a href="?hours=24"
+                class="px-3 py-1.5 text-sm rounded-md transition-colors {% if hours == 24 %}bg-ocean-600 text-white{% else %}text-slate-400 hover:text-white{% endif %}">24h</a>
+            <a href="?hours=168"
+                class="px-3 py-1.5 text-sm rounded-md transition-colors {% if hours == 168 %}bg-ocean-600 text-white{% else %}text-slate-400 hover:text-white{% endif %}">7d</a>
+            <a href="?hours=720"
+                class="px-3 py-1.5 text-sm rounded-md transition-colors {% if hours == 720 %}bg-ocean-600 text-white{% else %}text-slate-400 hover:text-white{% endif %}">30d</a>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Trending Up -->
+        <div class="glass-card rounded-xl p-6">
+            <h2 class="text-xl font-semibold mb-4 flex items-center space-x-2">
+                <span>🔥</span>
+                <span>Trending Up</span>
+            </h2>
+            <div class="space-y-3">
+                {% for trend in trends %}
+                <div class="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg">
+                    <div class="flex items-center space-x-3">
+                        <span class="text-lg font-bold text-slate-600">{{ loop.index }}</span>
+                        <span class="text-white font-medium">#{{ trend.word }}</span>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-green-400 font-semibold">
+                            {% if trend.change_percent == 999 %}
+                            🆕 New
+                            {% else %}
+                            ↑ {{ trend.change_percent|int }}%
+                            {% endif %}
+                        </div>
+                        <div class="text-xs text-slate-500">{{ trend.count }} mentions</div>
+                    </div>
+                </div>
+                {% else %}
+                <p class="text-slate-500 text-center py-4">Not enough data yet for trend analysis.</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Top Words -->
+        <div class="glass-card rounded-xl p-6">
+            <h2 class="text-xl font-semibold mb-4 flex items-center space-x-2">
+                <span>📊</span>
+                <span>Most Mentioned</span>
+            </h2>
+            <div class="space-y-2">
+                {% for word in top_words %}
+                <div class="flex items-center space-x-3">
+                    <div class="flex-1">
+                        <div class="flex justify-between text-sm mb-1">
+                            <span class="text-slate-300">{{ word.word }}</span>
+                            <span class="text-slate-500">{{ word.total }}</span>
+                        </div>
+                        <div class="h-2 bg-slate-800 rounded-full overflow-hidden">
+                            {% set max_count = top_words[0].total if top_words else 1 %}
+                            {% set width = (word.total / max_count * 100)|int %}
+                            <div class="h-full bg-gradient-to-r from-ocean-500 to-molten-500 rounded-full"
+                                style="width: {{ width }}%"></div>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <p class="text-slate-500 text-center py-4">No word frequency data yet.</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Sentiment Overview -->
+        <div class="glass-card rounded-xl p-6">
+            <h2 class="text-xl font-semibold mb-4 flex items-center space-x-2">
+                <span>😊</span>
+                <span>Sentiment</span>
+            </h2>
+            <div class="text-center py-6">
+                <div class="text-6xl mb-4">{{ sentiment.emoji }}</div>
+                <div
+                    class="text-3xl font-bold {% if sentiment.polarity >= 0 %}text-green-400{% else %}text-red-400{% endif %}">
+                    {{ '%+.2f'|format(sentiment.polarity) }}
+                </div>
+                <div class="text-slate-400 mt-2 capitalize">{{ sentiment.label }}</div>
+                <div class="text-sm text-slate-500 mt-1">Based on {{ sentiment.sample_size }} posts</div>
+            </div>
+
+            <!-- Sentiment scale -->
+            <div class="mt-4">
+                <div class="flex justify-between text-xs text-slate-500 mb-1">
+                    <span>Negative</span>
+                    <span>Neutral</span>
+                    <span>Positive</span>
+                </div>
+                <div class="h-3 bg-gradient-to-r from-red-500 via-slate-500 to-green-500 rounded-full relative">
+                    {% set marker_pos = ((sentiment.polarity + 1) / 2 * 100)|int %}
+                    <div class="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-lg border-2 border-slate-900"
+                        style="left: calc({{ marker_pos }}% - 8px)"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Activity Chart Placeholder -->
+        <div class="glass-card rounded-xl p-6">
+            <h2 class="text-xl font-semibold mb-4 flex items-center space-x-2">
+                <span>📈</span>
+                <span>Activity Over Time</span>
+            </h2>
+            <div id="activity-chart" class="h-48 flex items-center justify-center">
+                {% if snapshots %}
+                <div class="w-full h-full relative">
+                    <!-- Simple bar chart representation -->
+                    <div class="flex items-end justify-between h-full space-x-1">
+                        {% for snapshot in snapshots[-24:] %}
+                        {% set max_posts = snapshots|map(attribute='total_posts')|max if snapshots else 1 %}
+                        {% set height = (snapshot.total_posts / max_posts * 100)|int if max_posts > 0 else 0 %}
+                        <div class="flex-1 bg-ocean-500/50 hover:bg-ocean-500/70 transition-colors rounded-t"
+                            style="height: {{ height }}%"
+                            title="{{ snapshot.timestamp }}: {{ snapshot.total_posts }} total posts"></div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% else %}
+                <p class="text-slate-500">Collecting snapshot data...</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

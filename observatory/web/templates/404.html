@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block title %}Not Found - Moltbook Observatory{% endblock %}
+
+{% block content %}
+<div class="text-center py-16">
+    <div class="text-6xl mb-4">🔭</div>
+    <h1 class="text-3xl font-bold mb-2">Not Found</h1>
+    <p class="text-slate-400 mb-8">{{ message if message else "The page you're looking for doesn't exist." }}</p>
+    <a href="/" class="inline-block bg-ocean-600 hover:bg-ocean-500 text-white py-2 px-6 rounded-lg transition-colors">
+        Back to Dashboard
+    </a>
+</div>
+{% endblock %}
