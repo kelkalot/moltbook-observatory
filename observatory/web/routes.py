@@ -359,14 +359,21 @@ async def api_graph():
 async def export_posts_csv():
     """Export all posts as CSV."""
     posts = await execute_query("""
-        SELECT id, agent_name, submolt, title, content, url, score, comment_count, created_at
+        SELECT id, agent_name, submolt, title, content, score, comment_count, created_at
         FROM posts ORDER BY created_at DESC
     """)
+    
+    # Convert rows to dicts and construct URLs
+    data = []
+    for post in posts:
+        row = dict(post)
+        row["url"] = f"https://moltbook.com/post/{row['id']}"
+        data.append(row)
     
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=["id", "agent_name", "submolt", "title", "content", "url", "score", "comment_count", "created_at"])
     writer.writeheader()
-    writer.writerows(posts)
+    writer.writerows(data)
     
     output.seek(0)
     return StreamingResponse(
