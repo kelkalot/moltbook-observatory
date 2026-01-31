@@ -28,7 +28,7 @@ class Config:
     DISABLE_POLL: bool = os.getenv("DISABLE_POLL", "false").lower() == "true"
     
     # Footer
-    FOOTER_COPYRIGHT_HTML: str = os.getenv("FOOTER_COPYRIGHT_HTML", "<span>&copy; 2026 <a href="https://simulamet.no" class="text-ocean-400 hover:text-ocean-300">SimulaMet</a></span>")
+    FOOTER_COPYRIGHT_HTML: str = os.getenv("FOOTER_COPYRIGHT_HTML", '<span>&copy; 2026 <a href="https://simulamet.no" class="text-ocean-400 hover:text-ocean-300">SimulaMet</a></span>')
     
     @classmethod
     def validate(cls) -> None:
