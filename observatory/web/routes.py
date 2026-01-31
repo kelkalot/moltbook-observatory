@@ -58,26 +58,50 @@ async def agents_page(
     request: Request,
     sort: str = Query("karma", pattern="^(karma|name|follower_count|first_seen_at)$"),
     order: str = Query("desc", pattern="^(asc|desc)$"),
+    search: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
 ):
-    """Agent directory page."""
+    """Agent directory page with pagination and search."""
     order_sql = "DESC" if order == "desc" else "ASC"
+    page_size = 20
+    offset = (page - 1) * page_size
     
-    agents = await execute_query(f"""
+    # Build query with optional search filter
+    where_clause = ""
+    params = []
+    if search:
+        where_clause = "WHERE (name LIKE ? OR description LIKE ?)"
+        search_term = f"%{search}%"
+        params = [search_term, search_term]
+    
+    # Get total count
+    count_query = f"SELECT COUNT(*) as count FROM agents {where_clause}"
+    total_result = await execute_query(count_query, tuple(params))
+    total_agents = total_result[0]["count"] if total_result else 0
+    
+    # Get paginated agents
+    agents_query = f"""
         SELECT name, description, karma, follower_count, following_count,
                is_claimed, owner_x_handle, first_seen_at, created_at
         FROM agents
+        {where_clause}
         ORDER BY {sort} {order_sql}
-        LIMIT 100
-    """)
+        LIMIT ? OFFSET ?
+    """
+    agents = await execute_query(agents_query, tuple(params + [page_size, offset]))
     
-    total_agents = await execute_query("SELECT COUNT(*) as count FROM agents")
+    total_pages = (total_agents + page_size - 1) // page_size
     
     return templates.TemplateResponse("agents.html", {
         "request": request,
         "agents": agents,
-        "total": total_agents[0]["count"] if total_agents else 0,
+        "total": total_agents,
         "current_sort": sort,
         "current_order": order,
+        "current_search": search or "",
+        "page": page,
+        "total_pages": total_pages,
+        "page_size": page_size,
     })
 
 
@@ -112,17 +136,67 @@ async def agent_profile(request: Request, name: str):
     })
 
 
+@router.get("/submolts", response_class=HTMLResponse)
+async def submolts_page(
+    request: Request,
+    sort: str = Query("subscriber_count", pattern="^(subscriber_count|name|post_count)$"),
+    order: str = Query("desc", pattern="^(asc|desc)$"),
+    search: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+):
+    """Submolts (communities) directory page with pagination and search."""
+    order_sql = "DESC" if order == "desc" else "ASC"
+    page_size = 20
+    offset = (page - 1) * page_size
+    
+    # Build query with optional search filter
+    where_clause = ""
+    params = []
+    if search:
+        where_clause = "WHERE (name LIKE ? OR display_name LIKE ? OR description LIKE ?)"
+        search_term = f"%{search}%"
+        params = [search_term, search_term, search_term]
+    
+    # Get total count
+    count_query = f"SELECT COUNT(*) as count FROM submolts {where_clause}"
+    total_result = await execute_query(count_query, tuple(params))
+    total_submolts = total_result[0]["count"] if total_result else 0
+    
+    # Get paginated submolts
+    submolts_query = f"""
+        SELECT name, display_name, description, subscriber_count, post_count,
+               created_at, first_seen_at
+        FROM submolts
+        {where_clause}
+        ORDER BY {sort} {order_sql}
+        LIMIT ? OFFSET ?
+    """
+    submolts = await execute_query(submolts_query, tuple(params + [page_size, offset]))
+    
+    total_pages = (total_submolts + page_size - 1) // page_size
+    
+    return templates.TemplateResponse("submolts.html", {
+        "request": request,
+        "submolts": submolts,
+        "total": total_submolts,
+        "current_sort": sort,
+        "current_order": order,
+        "current_search": search or "",
+        "page": page,
+        "total_pages": total_pages,
+        "page_size": page_size,
+    })
+
+
 @router.get("/trends", response_class=HTMLResponse)
 async def trends_page(
     request: Request,
     hours: int = Query(24, ge=1, le=720),
 ):
-    """Trends page with word frequency analysis."""
-    trends = await get_trending_words(hours=hours, limit=20)
-    top_words = await get_top_words(hours=hours, limit=20)
+    """Trends and topic analysis page."""
+    trends = await get_trending_words(hours=hours, limit=10)
+    top_words = await get_top_words(hours=hours, limit=10)
     sentiment = await get_recent_sentiment(hours=hours)
-    
-    # Get snapshot history for charts
     snapshots = await get_snapshot_history(hours=hours)
     
     return templates.TemplateResponse("trends.html", {
@@ -132,22 +206,6 @@ async def trends_page(
         "sentiment": sentiment,
         "snapshots": snapshots,
         "hours": hours,
-    })
-
-
-@router.get("/submolts", response_class=HTMLResponse)
-async def submolts_page(request: Request):
-    """Submolts (communities) directory page."""
-    submolts = await execute_query("""
-        SELECT name, display_name, description, subscriber_count, post_count,
-               created_at, first_seen_at
-        FROM submolts
-        ORDER BY subscriber_count DESC
-    """)
-    
-    return templates.TemplateResponse("submolts.html", {
-        "request": request,
-        "submolts": submolts,
     })
 
 

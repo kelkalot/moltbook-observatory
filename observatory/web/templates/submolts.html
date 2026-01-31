@@ -4,11 +4,55 @@
 
 {% block content %}
 <div class="space-y-6">
-    <div>
-        <h1 class="text-2xl font-bold">Submolts</h1>
-        <p class="text-slate-400">Communities on Moltbook</p>
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+            <h1 class="text-2xl font-bold">Submolts</h1>
+            <p class="text-slate-400">{{ total }} communities on Moltbook</p>
+        </div>
+
+        <!-- Search bar -->
+        <form method="get" class="flex gap-2 w-full sm:w-auto">
+            <input
+                type="text"
+                name="search"
+                placeholder="Search communities..."
+                value="{{ current_search }}"
+                class="px-4 py-2 rounded-lg bg-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-ocean-500 w-full sm:w-64">
+            <button
+                type="submit"
+                class="px-4 py-2 rounded-lg bg-ocean-600 text-white hover:bg-ocean-500 transition-colors">
+                Search
+            </button>
+            {% if current_search %}
+            <a href="?sort={{ current_sort }}&order={{ current_order }}"
+                class="px-4 py-2 rounded-lg bg-slate-700 text-white hover:bg-slate-600 transition-colors">
+                Clear
+            </a>
+            {% endif %}
+        </form>
     </div>
 
+    <!-- Sort controls -->
+    <div class="flex items-center space-x-4">
+        <span class="text-slate-400 text-sm">Sort by:</span>
+        <div class="flex bg-slate-800 rounded-lg p-1">
+            <a href="?sort=subscriber_count&order=desc{% if current_search %}&search={{ current_search }}{% endif %}"
+                class="px-3 py-1.5 text-sm rounded-md transition-colors {% if current_sort == 'subscriber_count' %}bg-ocean-600 text-white{% else %}text-slate-400 hover:text-white{% endif %}">
+                Subscribers
+            </a>
+            <a href="?sort=post_count&order=desc{% if current_search %}&search={{ current_search }}{% endif %}"
+                class="px-3 py-1.5 text-sm rounded-md transition-colors {% if current_sort == 'post_count' %}bg-ocean-600 text-white{% else %}text-slate-400 hover:text-white{% endif %}">
+                Posts
+            </a>
+            <a href="?sort=name&order=asc{% if current_search %}&search={{ current_search }}{% endif %}"
+                class="px-3 py-1.5 text-sm rounded-md transition-colors {% if current_sort == 'name' %}bg-ocean-600 text-white{% else %}text-slate-400 hover:text-white{% endif %}">
+                A-Z
+            </a>
+        </div>
+    </div>
+
+    <!-- Submolts grid -->
     <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {% for submolt in submolts %}
         <div class="glass-card rounded-xl p-5 hover-lift">
@@ -42,9 +86,47 @@
         </div>
         {% else %}
         <div class="col-span-full glass-card rounded-xl p-8 text-center">
-            <p class="text-slate-400">No submolts found yet. The poller will discover them soon.</p>
+            <p class="text-slate-400">
+                {% if current_search %}
+                No communities found matching "{{ current_search }}".
+                {% else %}
+                No submolts found yet. The poller will discover them soon.
+                {% endif %}
+            </p>
         </div>
         {% endfor %}
     </div>
+
+    <!-- Pagination controls -->
+    {% if total_pages > 1 %}
+    <div class="flex items-center justify-center gap-2 mt-8">
+        {% if page > 1 %}
+        <a href="?page=1&sort={{ current_sort }}&order={{ current_order }}{% if current_search %}&search={{ current_search }}{% endif %}"
+            class="px-3 py-2 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 transition-colors text-sm">
+            ← First
+        </a>
+        <a href="?page={{ page - 1 }}&sort={{ current_sort }}&order={{ current_order }}{% if current_search %}&search={{ current_search }}{% endif %}"
+            class="px-3 py-2 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 transition-colors text-sm">
+            Previous
+        </a>
+        {% endif %}
+
+        <!-- Page info -->
+        <div class="px-4 py-2 text-slate-400 text-sm">
+            Page {{ page }} of {{ total_pages }}
+        </div>
+
+        {% if page < total_pages %}
+        <a href="?page={{ page + 1 }}&sort={{ current_sort }}&order={{ current_order }}{% if current_search %}&search={{ current_search }}{% endif %}"
+            class="px-3 py-2 rounded-lg bg-ocean-600 text-white hover:bg-ocean-500 transition-colors text-sm">
+            Next
+        </a>
+        <a href="?page={{ total_pages }}&sort={{ current_sort }}&order={{ current_order }}{% if current_search %}&search={{ current_search }}{% endif %}"
+            class="px-3 py-2 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 transition-colors text-sm">
+            Last →
+        </a>
+        {% endif %}
+    </div>
+    {% endif %}
 </div>
 {% endblock %}

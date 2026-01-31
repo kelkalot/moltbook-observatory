@@ -25,6 +25,7 @@ class Config:
     
     # App settings
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
+    DISABLE_POLL: bool = os.getenv("DISABLE_POLL", "false").lower() == "true"
     
     @classmethod
     def validate(cls) -> None:

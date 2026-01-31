@@ -24,19 +24,23 @@ async def lifespan(app: FastAPI):
     # Initialize database
     await init_db()
     
-    # Set up and start scheduler
-    scheduler = setup_scheduler()
-    scheduler.start()
-    print("📡 Background scheduler started")
-    
-    # Run initial data fetch
-    await run_initial_poll()
+    # Set up and start scheduler (unless disabled)
+    if config.DISABLE_POLL:
+        print("⏸️  Polling is disabled")
+    else:
+        scheduler = setup_scheduler()
+        scheduler.start()
+        print("📡 Background scheduler started")
+        
+        # Run initial data fetch
+        await run_initial_poll()
     
     yield
     
     # Shutdown
     print("Shutting down...")
-    scheduler.shutdown()
+    if not config.DISABLE_POLL:
+        scheduler.shutdown()
     await close_client()
     await close_db()
     print("Goodbye! 🦞")
