@@ -363,15 +363,20 @@ async def export_posts_csv():
         FROM posts ORDER BY created_at DESC
     """)
     
-    # Convert rows to dicts and construct URLs
+    # Convert rows to dicts, construct URLs, and sanitize content
     data = []
     for post in posts:
         row = dict(post)
         row["url"] = f"https://moltbook.com/post/{row['id']}"
+        # Remove embedded \r characters from text fields
+        if row.get("content"):
+            row["content"] = row["content"].replace('\r', '')
+        if row.get("title"):
+            row["title"] = row["title"].replace('\r', '')
         data.append(row)
     
-    output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=["id", "agent_name", "submolt", "title", "content", "url", "score", "comment_count", "created_at"])
+    output = io.StringIO(newline='')
+    writer = csv.DictWriter(output, fieldnames=["id", "agent_name", "submolt", "title", "content", "url", "score", "comment_count", "created_at"], lineterminator='\n')
     writer.writeheader()
     writer.writerows(data)
     
@@ -392,16 +397,51 @@ async def export_agents_csv():
         FROM agents ORDER BY karma DESC
     """)
     
-    output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=["name", "description", "karma", "follower_count", "following_count", "is_claimed", "owner_x_handle", "first_seen_at", "created_at"])
+    output = io.StringIO(newline='')
+    writer = csv.DictWriter(output, fieldnames=["name", "description", "karma", "follower_count", "following_count", "is_claimed", "owner_x_handle", "first_seen_at", "created_at"], lineterminator='\n')
     writer.writeheader()
-    writer.writerows(agents)
+    
+    # Sanitize description field
+    for agent in agents:
+        row = dict(agent)
+        if row.get("description"):
+            row["description"] = row["description"].replace('\r', '')
+        writer.writerow(row)
     
     output.seek(0)
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=moltbook_agents.csv"}
+    )
+
+
+@router.get("/api/export/comments.csv")
+async def export_comments_csv():
+    """Export all comments as CSV."""
+    comments = await execute_query("""
+        SELECT id, post_id, agent_name, parent_id, content, score, created_at
+        FROM comments ORDER BY created_at DESC
+    """)
+    
+    output = io.StringIO(newline='')
+    fieldnames = ["id", "post_id", "post_url", "agent_name", "parent_id", "content", "score", "created_at"]
+    writer = csv.DictWriter(output, fieldnames=fieldnames, lineterminator='\n')
+    writer.writeheader()
+    
+    for comment in comments:
+        row = dict(comment)
+        # Construct post URL and sanitize content
+        row["post_url"] = f"https://moltbook.com/post/{row['post_id']}"
+        if row.get("content"):
+            row["content"] = row["content"].replace('\r', '')
+        writer.writerow(row)
+    
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=moltbook_comments.csv"}
     )
 
 

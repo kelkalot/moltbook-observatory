@@ -290,28 +290,35 @@ async def process_comments(post_id: str, comments_data: dict) -> int:
         async with db.execute("SELECT id FROM comments WHERE id = ?", (comment_id,)) as cursor:
             exists = await cursor.fetchone()
         
-        agent = comment.get("agent", {})
-        agent_name = agent.get("name", "") if agent else ""
+        # API uses "author" not "agent"
+        author = comment.get("author") or comment.get("agent") or {}
+        author_name = author.get("name", "") if author else ""
+        
+        # Calculate score from upvotes/downvotes
+        upvotes = comment.get("upvotes", 0) or 0
+        downvotes = comment.get("downvotes", 0) or 0
+        score = upvotes - downvotes
         
         if not exists:
+            # Ensure agent exists BEFORE inserting comment (FK constraint)
+            if author_name:
+                await ensure_agent(author_name, author)
+            
             await db.execute("""
                 INSERT INTO comments (id, post_id, agent_id, agent_name, parent_id, content, score, created_at, fetched_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 comment_id,
                 post_id,
-                agent.get("id") if agent else None,
-                agent_name,
+                author.get("id") if author else None,
+                author_name,
                 parent_id,
                 comment.get("content", ""),
-                comment.get("score", 0),
+                score,
                 comment.get("created_at"),
                 now,
             ))
             new_count += 1
-            
-            if agent_name:
-                await ensure_agent(agent_name, agent)
         
         # Process replies
         for reply in comment.get("replies", []):

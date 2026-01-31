@@ -96,9 +96,13 @@ async def poll_comments() -> None:
         
         for post in posts:
             try:
-                data = await client.get_post_comments(post["id"])
-                new_count = await process_comments(post["id"], data)
-                total_new += new_count
+                # Fetch full post details - comments are at top level of response
+                response = await client.get_post(post["id"])
+                comments = response.get("comments", [])
+                
+                if comments:
+                    new_count = await process_comments(post["id"], {"comments": comments})
+                    total_new += new_count
             except Exception as e:
                 print(f"[{datetime.now().isoformat()}] Error fetching comments for post {post['id']}: {e}")
                 
