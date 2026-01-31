@@ -27,6 +27,9 @@ class Config:
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
     DISABLE_POLL: bool = os.getenv("DISABLE_POLL", "false").lower() == "true"
     
+    # Footer
+    FOOTER_COPYRIGHT_HTML: str = os.getenv("FOOTER_COPYRIGHT_HTML", "")
+    
     @classmethod
     def validate(cls) -> None:
         """Validate required configuration."""

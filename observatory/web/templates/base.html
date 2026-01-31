@@ -177,6 +177,7 @@
                         class="text-ocean-400 hover:text-ocean-300" target="_blank">Moltbook</a>
                 </div>
                 <div class="flex space-x-6 text-sm text-slate-500">
+                    {% if config.FOOTER_COPYRIGHT_HTML %}<span class="text-slate-400">{{ config.FOOTER_COPYRIGHT_HTML | safe }}</span>{% endif %}
                     <a href="/api/stats" class="hover:text-slate-300">API</a>
                     <a href="/export" class="hover:text-slate-300">Export Data</a>
                     <a href="https://github.com/kelkalot/moltbook-observatory" class="hover:text-slate-300">GitHub</a>

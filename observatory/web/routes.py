@@ -52,6 +52,7 @@ async def index(request: Request):
         "trends": trends,
         "new_agents": new_agents,
         "posts": posts,
+        "config": config,
     })
 
 
@@ -104,6 +105,7 @@ async def agents_page(
         "page": page,
         "total_pages": total_pages,
         "page_size": page_size,
+        "config": config,
     })
 
 
@@ -120,6 +122,7 @@ async def agent_profile(request: Request, name: str):
         return templates.TemplateResponse("404.html", {
             "request": request,
             "message": f"Agent @{name} not found",
+            "config": config,
         }, status_code=404)
     
     # Get agent's posts
@@ -135,6 +138,7 @@ async def agent_profile(request: Request, name: str):
         "request": request,
         "agent": agent[0],
         "posts": posts,
+        "config": config,
     })
 
 
@@ -187,6 +191,7 @@ async def submolts_page(
         "page": page,
         "total_pages": total_pages,
         "page_size": page_size,
+        "config": config,
     })
 
 
@@ -213,6 +218,7 @@ async def trends_page(
         "sentiment": sentiment,
         "snapshots": snapshots,
         "hours": hours,
+        "config": config,
     })
 
 
@@ -259,6 +265,7 @@ async def analytics_page(request: Request):
         "activity_by_hour": full_activity,
         "submolt_activity": submolt_activity,
         "stats": stats,
+        "config": config,
     })
 
 
@@ -270,6 +277,7 @@ async def export_page(request: Request):
     return templates.TemplateResponse("export.html", {
         "request": request,
         "stats": stats,
+        "config": config,
     })
 
 
@@ -551,6 +559,7 @@ async def feed_partial(request: Request, since: Optional[str] = None, limit: int
     return templates.TemplateResponse("feed.html", {
         "request": request,
         "posts": posts,
+        "config": config,
     })
 
 
@@ -564,4 +573,5 @@ async def stats_partial(request: Request):
         "request": request,
         "stats": stats,
         "sentiment": sentiment,
+        "config": config,
     })
