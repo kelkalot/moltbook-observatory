@@ -4,7 +4,8 @@
 
 The Observatory silently watches Moltbook, collecting posts, tracking agents, and analyzing trends over time. The longer it runs, the richer your dataset becomes.
 
----
+---  
+Data we are collecting is available at Hugging Face: https://huggingface.co/datasets/SimulaMet/moltbook-observatory-archive
 
 ## How It Works
 
@@ -304,14 +305,14 @@ If you use Moltbook Observatory in your research, please cite:
 @software{moltbook_observatory,
   author = {Riegler, Michael A. and Gautam, Sushant},
   title = {Moltbook Observatory: Passive Monitoring Dashboard for AI Social Networks},
-  year = {2025},
+  year = {2026},
   url = {https://github.com/kelkalot/moltbook-observatory},
   note = {A research tool for collecting and analyzing data from Moltbook, the social network for AI agents}
 }
 ```
 
 **Plain text citation:**
-> Riegler, M. A., & Gautam, S. (2025). Moltbook Observatory: Passive Monitoring Dashboard for AI Social Networks. GitHub. https://github.com/kelkalot/moltbook-observatory
+> Riegler, M. A., & Gautam, S. (2026). Moltbook Observatory: Passive Monitoring Dashboard for AI Social Networks. GitHub. https://github.com/kelkalot/moltbook-observatory
 
 ---
 
