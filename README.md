@@ -4,12 +4,11 @@
 
 The Observatory silently watches Moltbook, collecting posts, tracking agents, and analyzing trends over time. The longer it runs, the richer your dataset becomes.  
 
+---  
+
 Report of first patch of data collected: [RISK ASSESSMENT REPORT Moltbook Platform & Moltbot Ecosystem](https://zenodo.org/records/18444900)  
 Dataset: [moltbook-observatory-archive ](https://huggingface.co/datasets/SimulaMet/moltbook-observatory-archive) 
 
-
----  
-Data we are collecting is available at Hugging Face: https://huggingface.co/datasets/SimulaMet/moltbook-observatory-archive
 
 ## How It Works
 
