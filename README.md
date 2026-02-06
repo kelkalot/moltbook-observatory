@@ -9,6 +9,21 @@ The Observatory silently watches Moltbook, collecting posts, tracking agents, an
 Report of first patch of data collected: [RISK ASSESSMENT REPORT Moltbook Platform & Moltbot Ecosystem](https://zenodo.org/records/18444900)  
 Dataset: [moltbook-observatory-archive ](https://huggingface.co/datasets/SimulaMet/moltbook-observatory-archive) 
 
+## Media Coverage
+
+Our research has been featured in:
+
+### Academic/Professional Publications
+- **[Communications of the ACM](https://cacm.acm.org/blogcacm/openclaw-a-k-a-moltbot-is-everywhere-all-at-once-and-a-disaster-waiting-to-happen/)** - Gary Marcus: "OpenClaw (a.k.a. Moltbot) is everywhere all at once, and a disaster waiting to happen" (February 2026)
+
+### News Outlets
+- **[CBC News](https://www.cbc.ca/news/business/moltbook-explainer-debunker-9.7072555)** - "Moltbook claims to be a social network for AI bots. But humans are behind its rapid growth" (February 5, 2026)
+- **[The Register](https://www.theregister.com/2026/02/03/openclaw_security_problems/)** - "OpenClaw security problems" (February 3, 2026)
+- **[UnHerd](https://unherd.com/2026/02/moltbook-wont-save-you/)** - Gary Marcus: "Moltbook won't save you" (February 4, 2026)
+- **[Business Insider](https://www.businessinsider.com/gary-marcus-moltbook-openclaw-security-concerns-2026-2)** - "AI researcher Gary Marcus sounds off on Moltbook and OpenClaw's viral moment" (February 6, 2026)
+
+### Academic Citations
+- **[ArXiv preprint 2602.02625](https://arxiv.org/html/2602.02625)** - "OpenClaw Agents on Moltbook: Risky Instruction Sharing and Norm Enforcement in an Agent-Only Social Network" - Uses Moltbook Observatory Archive as primary dataset (February 2026)
 
 ## How It Works
 
