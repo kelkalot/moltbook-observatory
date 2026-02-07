@@ -110,13 +110,47 @@ async def agents_page(
 
 
 @router.get("/agents/{name}", response_class=HTMLResponse)
-async def agent_profile(request: Request, name: str):
+async def agent_profile(
+    request: Request, 
+    name: str,
+    refresh: bool = Query(False, description="Refresh stats from API"),
+):
     """Individual agent profile page."""
-    agent = await execute_query("""
+    import asyncio
+    
+    # Optionally refresh agent stats from API
+    if refresh:
+        try:
+            from observatory.poller.client import get_client
+            from observatory.poller.processors import process_agent_profile
+            client = await get_client()
+            profile = await client.get_agent_profile(name)
+            await process_agent_profile(profile)
+        except Exception as e:
+            print(f"Failed to refresh agent {name}: {e}")
+    
+    # Run queries in parallel
+    agent_query = execute_query("""
         SELECT name, description, karma, follower_count, following_count,
                is_claimed, owner_x_handle, first_seen_at, last_seen_at, created_at, avatar_url
         FROM agents WHERE name = ?
     """, (name,))
+    
+    post_count_query = execute_query("""
+        SELECT COUNT(*) as count FROM posts WHERE agent_name = ?
+    """, (name,))
+    
+    posts_query = execute_query("""
+        SELECT id, submolt, title, content, score, comment_count, created_at
+        FROM posts
+        WHERE agent_name = ?
+        ORDER BY created_at DESC
+        LIMIT 20
+    """, (name,))
+    
+    agent, post_count_result, posts = await asyncio.gather(
+        agent_query, post_count_query, posts_query
+    )
     
     if not agent:
         return templates.TemplateResponse("404.html", {
@@ -125,18 +159,13 @@ async def agent_profile(request: Request, name: str):
             "config": config,
         }, status_code=404)
     
-    # Get agent's posts
-    posts = await execute_query("""
-        SELECT id, submolt, title, content, score, comment_count, created_at
-        FROM posts
-        WHERE agent_name = ?
-        ORDER BY created_at DESC
-        LIMIT 20
-    """, (name,))
+    # Build agent dict with computed post count
+    agent_data = dict(agent[0])
+    agent_data["post_count"] = post_count_result[0]["count"] if post_count_result else 0
     
     return templates.TemplateResponse("agent.html", {
         "request": request,
-        "agent": agent[0],
+        "agent": agent_data,
         "posts": posts,
         "config": config,
     })
@@ -228,14 +257,64 @@ async def submolts_page(
 
 
 @router.get("/submolts/{name}", response_class=HTMLResponse)
-async def submolt_detail(request: Request, name: str):
+async def submolt_detail(
+    request: Request, 
+    name: str,
+    refresh: bool = Query(False, description="Refresh stats from API"),
+):
     """Individual submolt detail page."""
-    submolt = await execute_query("""
+    import asyncio
+    
+    # Optionally refresh submolt stats from API
+    if refresh:
+        try:
+            from observatory.poller.client import get_client
+            from observatory.database.connection import get_db
+            from datetime import datetime
+            
+            client = await get_client()
+            data = await client.get_submolt(name)
+            api_submolt_data = data.get("submolt", data)  # Handle both wrapped and unwrapped response
+            
+            if api_submolt_data:
+                db = await get_db()
+                await db.execute("""
+                    UPDATE submolts SET
+                        subscriber_count = ?,
+                        post_count = ?
+                    WHERE name = ?
+                """, (
+                    api_submolt_data.get("subscriber_count", 0),
+                    api_submolt_data.get("post_count", 0),
+                    name,
+                ))
+                await db.commit()
+        except Exception as e:
+            print(f"Failed to refresh submolt {name}: {e}")
+    
+    # Run queries in parallel
+    submolt_query = execute_query("""
         SELECT name, display_name, description, subscriber_count, post_count,
                created_at, first_seen_at, avatar_url, banner_url
         FROM submolts
         WHERE name = ?
     """, (name,))
+    
+    actual_post_count_query = execute_query("""
+        SELECT COUNT(*) as count FROM posts WHERE submolt = ?
+    """, (name,))
+    
+    posts_query = execute_query("""
+        SELECT id, agent_name, title, content, score, comment_count, created_at
+        FROM posts
+        WHERE submolt = ?
+        ORDER BY created_at DESC
+        LIMIT 20
+    """, (name,))
+    
+    submolt, actual_post_count_result, posts = await asyncio.gather(
+        submolt_query, actual_post_count_query, posts_query
+    )
 
     if not submolt:
         return templates.TemplateResponse("404.html", {
@@ -243,18 +322,14 @@ async def submolt_detail(request: Request, name: str):
             "message": f"Submolt m/{name} not found",
             "config": config,
         }, status_code=404)
-
-    posts = await execute_query("""
-        SELECT id, agent_name, title, content, score, comment_count, created_at
-        FROM posts
-        WHERE submolt = ?
-        ORDER BY created_at DESC
-        LIMIT 20
-    """, (name,))
+    
+    # Build submolt dict with computed post count (use actual count from our DB)
+    submolt_data = dict(submolt[0])
+    submolt_data["post_count"] = actual_post_count_result[0]["count"] if actual_post_count_result else 0
 
     return templates.TemplateResponse("submolt.html", {
         "request": request,
-        "submolt": submolt[0],
+        "submolt": submolt_data,
         "posts": posts,
         "config": config,
     })

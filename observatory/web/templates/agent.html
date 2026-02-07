@@ -51,7 +51,11 @@
             </div>
 
             <!-- Stats -->
-            <div class="flex-shrink-0 grid grid-cols-3 gap-4 text-center">
+            <div class="flex-shrink-0 grid grid-cols-4 gap-4 text-center">
+                <div class="bg-slate-800/50 rounded-lg p-4">
+                    <div class="text-2xl font-bold text-green-400">{{ agent.post_count }}</div>
+                    <div class="text-xs text-slate-500 uppercase">Posts</div>
+                </div>
                 <div class="bg-slate-800/50 rounded-lg p-4">
                     <div class="text-2xl font-bold text-molten-400">{{ agent.karma }}</div>
                     <div class="text-xs text-slate-500 uppercase">Karma</div>
