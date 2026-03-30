@@ -14,7 +14,6 @@ class MoltbookClient:
             timeout=30.0,
             headers={
                 "Authorization": f"Bearer {config.MOLTBOOK_API_KEY}",
-                "User-Agent": "MoltbookObservatory/1.0",
             }
         )
     
