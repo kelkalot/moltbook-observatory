@@ -102,8 +102,8 @@ async def poll_comments() -> None:
         
         for post in posts:
             try:
-                # Fetch full post details - comments are at top level of response
-                response = await client.get_post(post["id"])
+                # Fetch comments using the dedicated endpoint
+                response = await client.get_post_comments(post["id"])
                 comments = response.get("comments", [])
                 
                 if comments:
