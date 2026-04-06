@@ -59,15 +59,16 @@ async def process_posts(posts_data: dict) -> int:
                 submolt = submolt.get("name", "")
             
             # Ensure agent exists BEFORE inserting post (for foreign key constraint)
+            resolved_agent_id = None
             if author_name:
-                await ensure_agent(author_name, author if isinstance(author, dict) else None)
+                resolved_agent_id = await ensure_agent(author_name, author if isinstance(author, dict) else None)
             
             await db.execute("""
                 INSERT INTO posts (id, agent_id, agent_name, submolt, title, content, url, score, comment_count, created_at, fetched_at, is_pinned)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 post_id,
-                author.get("id") if isinstance(author, dict) else None,
+                resolved_agent_id,
                 author_name,
                 submolt,
                 post.get("title", "") or "",
@@ -85,25 +86,29 @@ async def process_posts(posts_data: dict) -> int:
     return new_count
 
 
-async def ensure_agent(name: str, agent_data: dict = None) -> None:
-    """Ensure an agent exists in the database."""
+async def ensure_agent(name: str, agent_data: dict = None) -> str:
+    """Ensure an agent exists in the database and return canonical agent id."""
     db = await get_db()
+    now = datetime.utcnow().isoformat()
+    candidate_id = (agent_data or {}).get("id") or name
+
+    # Check by id first, then name to avoid duplicate-id inserts.
+    async with db.execute("SELECT id FROM agents WHERE id = ?", (candidate_id,)) as cursor:
+        existing = await cursor.fetchone()
+
+    if not existing:
+        async with db.execute("SELECT id FROM agents WHERE name = ?", (name,)) as cursor:
+            existing = await cursor.fetchone()
     
-    async with db.execute("SELECT name FROM agents WHERE name = ?", (name,)) as cursor:
-        exists = await cursor.fetchone()
-    
-    if exists:
-        # Update last seen
-        now = datetime.utcnow().isoformat()
-        await db.execute("UPDATE agents SET last_seen_at = ? WHERE name = ?", (now, name))
+    if existing:
+        await db.execute("UPDATE agents SET last_seen_at = ? WHERE id = ?", (now, existing["id"]))
+        resolved_id = existing["id"]
     else:
-        # Insert new agent
-        now = datetime.utcnow().isoformat()
         await db.execute("""
             INSERT INTO agents (id, name, description, karma, follower_count, following_count, is_claimed, first_seen_at, last_seen_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            agent_data.get("id", name) if agent_data else name,
+            candidate_id,
             name,
             agent_data.get("description", "") if agent_data else "",
             agent_data.get("karma", 0) if agent_data else 0,
@@ -113,8 +118,10 @@ async def ensure_agent(name: str, agent_data: dict = None) -> None:
             now,
             now,
         ))
+        resolved_id = candidate_id
     
     await db.commit()
+    return resolved_id
 
 
 async def process_agent_profile(profile_data: dict) -> None:
@@ -132,8 +139,15 @@ async def process_agent_profile(profile_data: dict) -> None:
     now = datetime.utcnow().isoformat()
     owner = agent.get("owner", {})
     
-    async with db.execute("SELECT name FROM agents WHERE name = ?", (name,)) as cursor:
-        exists = await cursor.fetchone()
+    agent_id = agent.get("id", name)
+
+    async with db.execute("SELECT id FROM agents WHERE id = ?", (agent_id,)) as cursor:
+        exists_by_id = await cursor.fetchone()
+
+    exists = exists_by_id
+    if not exists:
+        async with db.execute("SELECT id FROM agents WHERE name = ?", (name,)) as cursor:
+            exists = await cursor.fetchone()
     
     if exists:
         await db.execute("""
@@ -147,7 +161,7 @@ async def process_agent_profile(profile_data: dict) -> None:
                 last_seen_at = ?,
                 created_at = ?,
                 avatar_url = ?
-            WHERE name = ?
+            WHERE id = ?
         """, (
             agent.get("description", ""),
             agent.get("karma", 0),
@@ -158,14 +172,14 @@ async def process_agent_profile(profile_data: dict) -> None:
             now,
             agent.get("created_at"),
             agent.get("avatar_url"),
-            name,
+            exists["id"],
         ))
     else:
         await db.execute("""
             INSERT INTO agents (id, name, description, karma, follower_count, following_count, is_claimed, owner_x_handle, first_seen_at, last_seen_at, created_at, avatar_url)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            agent.get("id", name),
+            agent_id,
             name,
             agent.get("description", ""),
             agent.get("karma", 0),
@@ -292,6 +306,8 @@ async def process_comments(post_id: str, comments_data: dict) -> int:
         
         # API uses "author" not "agent"
         author = comment.get("author") or comment.get("agent") or {}
+        if isinstance(author, str):
+            author = {"name": author}
         author_name = author.get("name", "") if author else ""
         
         # Calculate score from upvotes/downvotes
@@ -301,8 +317,9 @@ async def process_comments(post_id: str, comments_data: dict) -> int:
         
         if not exists:
             # Ensure agent exists BEFORE inserting comment (FK constraint)
+            resolved_agent_id = None
             if author_name:
-                await ensure_agent(author_name, author)
+                resolved_agent_id = await ensure_agent(author_name, author)
             
             await db.execute("""
                 INSERT INTO comments (id, post_id, agent_id, agent_name, parent_id, content, score, created_at, fetched_at)
@@ -310,7 +327,7 @@ async def process_comments(post_id: str, comments_data: dict) -> int:
             """, (
                 comment_id,
                 post_id,
-                author.get("id") if author else None,
+                resolved_agent_id,
                 author_name,
                 parent_id,
                 comment.get("content", ""),
