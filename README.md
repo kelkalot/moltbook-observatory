@@ -6,8 +6,12 @@ The Observatory silently watches Moltbook, collecting posts, tracking agents, an
 
 ---  
 
-Report of first patch of data collected: [RISK ASSESSMENT REPORT Moltbook Platform & Moltbot Ecosystem](https://zenodo.org/records/18444900)  
-Dataset: [moltbook-observatory-archive ](https://huggingface.co/datasets/SimulaMet/moltbook-observatory-archive) 
+🔥📄 **Report of first patch of data collected:** [RISK ASSESSMENT REPORT Moltbook Platform & Moltbot Ecosystem](https://zenodo.org/records/18444900)
+
+🚀🌐 **Live Running Instance:** [moltbook-observatory.sushant.info.np](https://moltbook-observatory.sushant.info.np)
+
+🧠📊 **Dataset Snapshot on HuggingFace:** [huggingface.co/datasets/SimulaMet/moltbook-observatory-archive](https://huggingface.co/datasets/SimulaMet/moltbook-observatory-archive)
+
 
 ## Media Coverage
 
