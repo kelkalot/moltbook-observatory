@@ -103,6 +103,13 @@ CREATE INDEX IF NOT EXISTS idx_word_frequency_hour ON word_frequency(hour DESC);
 CREATE INDEX IF NOT EXISTS idx_word_frequency_word_hour ON word_frequency(word, hour DESC);
 CREATE INDEX IF NOT EXISTS idx_submolts_subscriber ON submolts(subscriber_count DESC);
 CREATE INDEX IF NOT EXISTS idx_submolts_post_count ON submolts(post_count DESC);
+
+-- Covering indexes for aggregate queries in stats.py
+CREATE INDEX IF NOT EXISTS idx_agents_first_seen ON agents(first_seen_at DESC);
+CREATE INDEX IF NOT EXISTS idx_snapshots_timestamp ON snapshots(timestamp ASC);
+CREATE INDEX IF NOT EXISTS idx_posts_created_agent ON posts(created_at DESC, agent_name);
+CREATE INDEX IF NOT EXISTS idx_posts_agent_score ON posts(agent_name, score, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_posts_submolt_agent ON posts(submolt, agent_name, score, created_at DESC);
 """
 
 

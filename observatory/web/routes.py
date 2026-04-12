@@ -2,10 +2,9 @@
 
 import csv
 import io
-from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Request, Query
-from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
 
@@ -24,13 +23,19 @@ router = APIRouter()
 templates_path = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=str(templates_path))
 
+# Cache-Control header values
+_CC_SHORT   = "public, max-age=30, s-maxage=60"     # live feed / index
+_CC_MEDIUM  = "public, max-age=60, s-maxage=120"    # lists (agents, submolts)
+_CC_LONG    = "public, max-age=120, s-maxage=300"   # profiles, trends, analytics
+_CC_STATIC  = "public, max-age=300, s-maxage=600"   # posts, graph (rarely change)
+_CC_NOSTORE = "no-store"                             # exports, search, refresh
+
 
 # ============ PAGE ROUTES ============
 
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     """Main dashboard page."""
-    # Run queries in parallel to reduce latency
     import asyncio
     stats, sentiment, trends, new_agents, posts = await asyncio.gather(
         get_stats(),
@@ -44,7 +49,7 @@ async def index(request: Request):
             LIMIT 20
         """)
     )
-    
+
     return templates.TemplateResponse("index.html", {
         "request": request,
         "stats": stats,
@@ -53,7 +58,7 @@ async def index(request: Request):
         "new_agents": new_agents,
         "posts": posts,
         "config": config,
-    })
+    }, headers={"Cache-Control": _CC_SHORT})
 
 
 @router.get("/agents", response_class=HTMLResponse)
@@ -65,36 +70,33 @@ async def agents_page(
     page: int = Query(1, ge=1),
 ):
     """Agent directory page with pagination and search."""
+    import asyncio
     order_sql = "DESC" if order == "desc" else "ASC"
     page_size = 20
     offset = (page - 1) * page_size
-    
-    # Build query with optional search filter
+
     where_clause = ""
     params = []
     if search:
         where_clause = "WHERE (name LIKE ? OR description LIKE ?)"
         search_term = f"%{search}%"
         params = [search_term, search_term]
-    
-    # Get total count
-    count_query = f"SELECT COUNT(*) as count FROM agents {where_clause}"
-    total_result = await execute_query(count_query, tuple(params))
+
+    total_result, agents = await asyncio.gather(
+        execute_query(f"SELECT COUNT(*) as count FROM agents {where_clause}", tuple(params)),
+        execute_query(f"""
+            SELECT name, description, karma, follower_count, following_count,
+                   is_claimed, owner_x_handle, first_seen_at, created_at
+            FROM agents
+            {where_clause}
+            ORDER BY {sort} {order_sql}
+            LIMIT ? OFFSET ?
+        """, tuple(params + [page_size, offset])),
+    )
+
     total_agents = total_result[0]["count"] if total_result else 0
-    
-    # Get paginated agents
-    agents_query = f"""
-        SELECT name, description, karma, follower_count, following_count,
-               is_claimed, owner_x_handle, first_seen_at, created_at
-        FROM agents
-        {where_clause}
-        ORDER BY {sort} {order_sql}
-        LIMIT ? OFFSET ?
-    """
-    agents = await execute_query(agents_query, tuple(params + [page_size, offset]))
-    
     total_pages = (total_agents + page_size - 1) // page_size
-    
+
     return templates.TemplateResponse("agents.html", {
         "request": request,
         "agents": agents,
@@ -106,19 +108,18 @@ async def agents_page(
         "total_pages": total_pages,
         "page_size": page_size,
         "config": config,
-    })
+    }, headers={"Cache-Control": _CC_MEDIUM})
 
 
 @router.get("/agents/{name}", response_class=HTMLResponse)
 async def agent_profile(
-    request: Request, 
+    request: Request,
     name: str,
     refresh: bool = Query(False, description="Refresh stats from API"),
 ):
     """Individual agent profile page."""
     import asyncio
-    
-    # Optionally refresh agent stats from API
+
     if refresh:
         try:
             from observatory.poller.client import get_client
@@ -128,57 +129,58 @@ async def agent_profile(
             await process_agent_profile(profile)
         except Exception as e:
             print(f"Failed to refresh agent {name}: {e}")
-    
-    # Run queries in parallel
-    agent_query = execute_query("""
-        SELECT name, description, karma, follower_count, following_count,
-               is_claimed, owner_x_handle, first_seen_at, last_seen_at, created_at, avatar_url
-        FROM agents WHERE name = ?
-    """, (name,))
-    
-    post_count_query = execute_query("""
-        SELECT COUNT(*) as count FROM posts WHERE agent_name = ?
-    """, (name,))
-    
-    posts_query = execute_query("""
-        SELECT id, submolt, title, content, score, comment_count, created_at
-        FROM posts
-        WHERE agent_name = ?
-        ORDER BY created_at DESC
-        LIMIT 20
-    """, (name,))
-    
+
     agent, post_count_result, posts = await asyncio.gather(
-        agent_query, post_count_query, posts_query
+        execute_query("""
+            SELECT name, description, karma, follower_count, following_count,
+                   is_claimed, owner_x_handle, first_seen_at, last_seen_at, created_at, avatar_url
+            FROM agents WHERE name = ?
+        """, (name,)),
+        execute_query("SELECT COUNT(*) as count FROM posts WHERE agent_name = ?", (name,)),
+        execute_query("""
+            SELECT id, submolt, title, content, score, comment_count, created_at
+            FROM posts
+            WHERE agent_name = ?
+            ORDER BY created_at DESC
+            LIMIT 20
+        """, (name,)),
     )
-    
+
     if not agent:
         return templates.TemplateResponse("404.html", {
             "request": request,
             "message": f"Agent @{name} not found",
             "config": config,
         }, status_code=404)
-    
-    # Build agent dict with computed post count
+
     agent_data = dict(agent[0])
     agent_data["post_count"] = post_count_result[0]["count"] if post_count_result else 0
-    
+
+    cc = _CC_NOSTORE if refresh else _CC_LONG
     return templates.TemplateResponse("agent.html", {
         "request": request,
         "agent": agent_data,
         "posts": posts,
         "config": config,
-    })
+    }, headers={"Cache-Control": cc})
 
 
 @router.get("/posts/{post_id}", response_class=HTMLResponse)
 async def post_detail(request: Request, post_id: str):
     """Individual post detail page."""
-    post = await execute_query("""
-        SELECT id, agent_name, submolt, title, content, score, comment_count, created_at
-        FROM posts
-        WHERE id = ?
-    """, (post_id,))
+    import asyncio
+
+    post, comments = await asyncio.gather(
+        execute_query("""
+            SELECT id, agent_name, submolt, title, content, score, comment_count, created_at
+            FROM posts WHERE id = ?
+        """, (post_id,)),
+        execute_query("""
+            SELECT id, agent_name, parent_id, content, score, created_at
+            FROM comments WHERE post_id = ?
+            ORDER BY created_at DESC LIMIT 50
+        """, (post_id,)),
+    )
 
     if not post:
         return templates.TemplateResponse("404.html", {
@@ -187,20 +189,12 @@ async def post_detail(request: Request, post_id: str):
             "config": config,
         }, status_code=404)
 
-    comments = await execute_query("""
-        SELECT id, agent_name, parent_id, content, score, created_at
-        FROM comments
-        WHERE post_id = ?
-        ORDER BY created_at DESC
-        LIMIT 50
-    """, (post_id,))
-
     return templates.TemplateResponse("post.html", {
         "request": request,
         "post": post[0],
         "comments": comments,
         "config": config,
-    })
+    }, headers={"Cache-Control": _CC_STATIC})
 
 
 @router.get("/submolts", response_class=HTMLResponse)
@@ -212,36 +206,33 @@ async def submolts_page(
     page: int = Query(1, ge=1),
 ):
     """Submolts (communities) directory page with pagination and search."""
+    import asyncio
     order_sql = "DESC" if order == "desc" else "ASC"
     page_size = 20
     offset = (page - 1) * page_size
-    
-    # Build query with optional search filter
+
     where_clause = ""
     params = []
     if search:
         where_clause = "WHERE (name LIKE ? OR display_name LIKE ? OR description LIKE ?)"
         search_term = f"%{search}%"
         params = [search_term, search_term, search_term]
-    
-    # Get total count
-    count_query = f"SELECT COUNT(*) as count FROM submolts {where_clause}"
-    total_result = await execute_query(count_query, tuple(params))
+
+    total_result, submolts = await asyncio.gather(
+        execute_query(f"SELECT COUNT(*) as count FROM submolts {where_clause}", tuple(params)),
+        execute_query(f"""
+            SELECT name, display_name, description, subscriber_count, post_count,
+                   created_at, first_seen_at
+            FROM submolts
+            {where_clause}
+            ORDER BY {sort} {order_sql}
+            LIMIT ? OFFSET ?
+        """, tuple(params + [page_size, offset])),
+    )
+
     total_submolts = total_result[0]["count"] if total_result else 0
-    
-    # Get paginated submolts
-    submolts_query = f"""
-        SELECT name, display_name, description, subscriber_count, post_count,
-               created_at, first_seen_at
-        FROM submolts
-        {where_clause}
-        ORDER BY {sort} {order_sql}
-        LIMIT ? OFFSET ?
-    """
-    submolts = await execute_query(submolts_query, tuple(params + [page_size, offset]))
-    
     total_pages = (total_submolts + page_size - 1) // page_size
-    
+
     return templates.TemplateResponse("submolts.html", {
         "request": request,
         "submolts": submolts,
@@ -253,35 +244,31 @@ async def submolts_page(
         "total_pages": total_pages,
         "page_size": page_size,
         "config": config,
-    })
+    }, headers={"Cache-Control": _CC_MEDIUM})
 
 
 @router.get("/submolts/{name}", response_class=HTMLResponse)
 async def submolt_detail(
-    request: Request, 
+    request: Request,
     name: str,
     refresh: bool = Query(False, description="Refresh stats from API"),
 ):
     """Individual submolt detail page."""
     import asyncio
-    
-    # Optionally refresh submolt stats from API
+
     if refresh:
         try:
             from observatory.poller.client import get_client
             from observatory.database.connection import get_db
-            from datetime import datetime
-            
+
             client = await get_client()
             data = await client.get_submolt(name)
-            api_submolt_data = data.get("submolt", data)  # Handle both wrapped and unwrapped response
-            
+            api_submolt_data = data.get("submolt", data)
+
             if api_submolt_data:
                 db = await get_db()
                 await db.execute("""
-                    UPDATE submolts SET
-                        subscriber_count = ?,
-                        post_count = ?
+                    UPDATE submolts SET subscriber_count = ?, post_count = ?
                     WHERE name = ?
                 """, (
                     api_submolt_data.get("subscriber_count", 0),
@@ -291,29 +278,19 @@ async def submolt_detail(
                 await db.commit()
         except Exception as e:
             print(f"Failed to refresh submolt {name}: {e}")
-    
-    # Run queries in parallel
-    submolt_query = execute_query("""
-        SELECT name, display_name, description, subscriber_count, post_count,
-               created_at, first_seen_at, avatar_url, banner_url
-        FROM submolts
-        WHERE name = ?
-    """, (name,))
-    
-    actual_post_count_query = execute_query("""
-        SELECT COUNT(*) as count FROM posts WHERE submolt = ?
-    """, (name,))
-    
-    posts_query = execute_query("""
-        SELECT id, agent_name, title, content, score, comment_count, created_at
-        FROM posts
-        WHERE submolt = ?
-        ORDER BY created_at DESC
-        LIMIT 20
-    """, (name,))
-    
+
     submolt, actual_post_count_result, posts = await asyncio.gather(
-        submolt_query, actual_post_count_query, posts_query
+        execute_query("""
+            SELECT name, display_name, description, subscriber_count, post_count,
+                   created_at, first_seen_at, avatar_url, banner_url
+            FROM submolts WHERE name = ?
+        """, (name,)),
+        execute_query("SELECT COUNT(*) as count FROM posts WHERE submolt = ?", (name,)),
+        execute_query("""
+            SELECT id, agent_name, title, content, score, comment_count, created_at
+            FROM posts WHERE submolt = ?
+            ORDER BY created_at DESC LIMIT 20
+        """, (name,)),
     )
 
     if not submolt:
@@ -322,17 +299,17 @@ async def submolt_detail(
             "message": f"Submolt m/{name} not found",
             "config": config,
         }, status_code=404)
-    
-    # Build submolt dict with computed post count (use actual count from our DB)
+
     submolt_data = dict(submolt[0])
     submolt_data["post_count"] = actual_post_count_result[0]["count"] if actual_post_count_result else 0
 
+    cc = _CC_NOSTORE if refresh else _CC_LONG
     return templates.TemplateResponse("submolt.html", {
         "request": request,
         "submolt": submolt_data,
         "posts": posts,
         "config": config,
-    })
+    }, headers={"Cache-Control": cc})
 
 
 @router.get("/trends", response_class=HTMLResponse)
@@ -342,15 +319,14 @@ async def trends_page(
 ):
     """Trends and topic analysis page."""
     import asyncio
-    
-    # Run queries in parallel
+
     trends, top_words, sentiment, snapshots = await asyncio.gather(
         get_trending_words(hours=hours, limit=10),
         get_top_words(hours=hours, limit=10),
         get_recent_sentiment(hours=hours),
         get_snapshot_history(hours=hours)
     )
-    
+
     return templates.TemplateResponse("trends.html", {
         "request": request,
         "trends": trends,
@@ -359,7 +335,7 @@ async def trends_page(
         "snapshots": snapshots,
         "hours": hours,
         "config": config,
-    })
+    }, headers={"Cache-Control": _CC_LONG})
 
 
 @router.get("/analytics", response_class=HTMLResponse)
@@ -367,39 +343,25 @@ async def analytics_page(request: Request):
     """Analytics and insights page."""
     import asyncio
     import math
-    
-    # Run queries in parallel
+
     top_posters, activity_by_hour, submolt_activity, stats = await asyncio.gather(
         get_top_posters(limit=15),
         get_activity_by_hour(),
         get_submolt_activity(limit=15),
         get_stats()
     )
-    
-    # Fill in missing hours and calculate log height
+
     hours_data = {h["hour"]: h["post_count"] for h in activity_by_hour}
-    full_activity = []
-    
-    # Calculate max for scaling
     max_posts = max(hours_data.values()) if hours_data else 1
-    
+    full_activity = []
     for h in range(24):
         count = hours_data.get(h, 0)
-        # Use sqrt scale for better visual differentiation
-        # sqrt compresses less than log, making differences more visible
         if count > 0 and max_posts > 0:
-            sqrt_height = int((math.sqrt(count) / math.sqrt(max_posts)) * 100)
-            # Ensure minimum visibility for small non-zero counts
-            sqrt_height = max(sqrt_height, 3)
+            sqrt_height = max(int((math.sqrt(count) / math.sqrt(max_posts)) * 100), 3)
         else:
             sqrt_height = 0
-            
-        full_activity.append({
-            "hour": h, 
-            "post_count": count,
-            "height_pct": sqrt_height
-        })
-    
+        full_activity.append({"hour": h, "post_count": count, "height_pct": sqrt_height})
+
     return templates.TemplateResponse("analytics.html", {
         "request": request,
         "top_posters": top_posters,
@@ -407,19 +369,19 @@ async def analytics_page(request: Request):
         "submolt_activity": submolt_activity,
         "stats": stats,
         "config": config,
-    })
+    }, headers={"Cache-Control": _CC_LONG})
 
 
 @router.get("/export", response_class=HTMLResponse)
 async def export_page(request: Request):
     """Data export page."""
     stats = await get_stats()
-    
+
     return templates.TemplateResponse("export.html", {
         "request": request,
         "stats": stats,
         "config": config,
-    })
+    }, headers={"Cache-Control": _CC_LONG})
 
 
 # ============ API ROUTES ============
@@ -445,31 +407,37 @@ async def api_feed(
             ORDER BY created_at DESC
             LIMIT ?
         """, (limit,))
-    
-    return {"posts": posts, "count": len(posts)}
+
+    return JSONResponse({"posts": posts, "count": len(posts)},
+                        headers={"Cache-Control": _CC_SHORT})
 
 
 @router.get("/api/stats")
 async def api_stats():
     """Get current platform statistics."""
-    stats = await get_stats()
-    sentiment = await get_recent_sentiment(hours=24)
-    
-    return {**stats, "sentiment": sentiment}
+    import asyncio
+    stats, sentiment = await asyncio.gather(
+        get_stats(),
+        get_recent_sentiment(hours=24),
+    )
+    return JSONResponse({**stats, "sentiment": sentiment},
+                        headers={"Cache-Control": _CC_MEDIUM})
 
 
 @router.get("/api/trends")
 async def api_trends(hours: int = Query(24, ge=1, le=720)):
     """Get trending words."""
     trends = await get_trending_words(hours=hours, limit=10)
-    return {"trends": trends, "period_hours": hours}
+    return JSONResponse({"trends": trends, "period_hours": hours},
+                        headers={"Cache-Control": _CC_LONG})
 
 
 @router.get("/api/trends/history")
 async def api_trends_history(word: str, days: int = Query(7, ge=1, le=30)):
     """Get word frequency history."""
     history = await get_word_history(word, days=days)
-    return {"word": word, "history": history}
+    return JSONResponse({"word": word, "history": history},
+                        headers={"Cache-Control": _CC_LONG})
 
 
 @router.get("/api/agents")
@@ -479,36 +447,40 @@ async def api_agents(
 ):
     """Get all agents."""
     order = "DESC" if sort in ("karma", "follower_count") else "ASC"
-    
     agents = await execute_query(f"""
         SELECT name, description, karma, follower_count, following_count, is_claimed
         FROM agents
         ORDER BY {sort} {order}
         LIMIT ?
     """, (limit,))
-    
-    return {"agents": agents, "count": len(agents)}
+
+    return JSONResponse({"agents": agents, "count": len(agents)},
+                        headers={"Cache-Control": _CC_MEDIUM})
 
 
 @router.get("/api/agents/{name}")
 async def api_agent(name: str):
     """Get single agent details."""
-    agent = await execute_query("""
-        SELECT name, description, karma, follower_count, following_count,
-               is_claimed, owner_x_handle, first_seen_at, last_seen_at, created_at
-        FROM agents WHERE name = ?
-    """, (name,))
-    
+    import asyncio
+
+    agent, posts = await asyncio.gather(
+        execute_query("""
+            SELECT name, description, karma, follower_count, following_count,
+                   is_claimed, owner_x_handle, first_seen_at, last_seen_at, created_at
+            FROM agents WHERE name = ?
+        """, (name,)),
+        execute_query("""
+            SELECT id, submolt, title, score, comment_count, created_at
+            FROM posts WHERE agent_name = ?
+            ORDER BY created_at DESC LIMIT 10
+        """, (name,)),
+    )
+
     if not agent:
-        return {"error": "Agent not found"}, 404
-    
-    posts = await execute_query("""
-        SELECT id, submolt, title, score, comment_count, created_at
-        FROM posts WHERE agent_name = ?
-        ORDER BY created_at DESC LIMIT 10
-    """, (name,))
-    
-    return {"agent": agent[0], "recent_posts": posts}
+        return JSONResponse({"error": "Agent not found"}, status_code=404)
+
+    return JSONResponse({"agent": agent[0], "recent_posts": posts},
+                        headers={"Cache-Control": _CC_LONG})
 
 
 @router.get("/api/submolts")
@@ -519,57 +491,54 @@ async def api_submolts():
         FROM submolts
         ORDER BY subscriber_count DESC
     """)
-    
-    return {"submolts": submolts}
+    return JSONResponse({"submolts": submolts},
+                        headers={"Cache-Control": _CC_LONG})
 
 
 @router.get("/api/analytics/top-posters")
 async def api_top_posters(limit: int = Query(20, ge=1, le=100)):
     """Get agents ranked by post count."""
     posters = await get_top_posters(limit=limit)
-    return {"top_posters": posters}
+    return JSONResponse({"top_posters": posters},
+                        headers={"Cache-Control": _CC_LONG})
 
 
 @router.get("/api/analytics/activity-by-hour")
 async def api_activity_by_hour():
     """Get post activity grouped by hour of day."""
     activity = await get_activity_by_hour()
-    # Fill in missing hours with 0
     hours_data = {h["hour"]: h["post_count"] for h in activity}
     full_activity = [{"hour": h, "post_count": hours_data.get(h, 0)} for h in range(24)]
-    return {"activity_by_hour": full_activity}
+    return JSONResponse({"activity_by_hour": full_activity},
+                        headers={"Cache-Control": _CC_LONG})
 
 
 @router.get("/api/analytics/submolt-activity")
 async def api_submolt_activity(limit: int = Query(20, ge=1, le=100)):
     """Get submolts ranked by post activity."""
     activity = await get_submolt_activity(limit=limit)
-    return {"submolt_activity": activity}
+    return JSONResponse({"submolt_activity": activity},
+                        headers={"Cache-Control": _CC_LONG})
 
 
 @router.get("/api/graph")
 async def api_graph():
     """Get social graph data for visualization."""
-    # Get all agents as nodes
-    agents = await execute_query("""
-        SELECT name, karma, follower_count
-        FROM agents
-        WHERE karma > 0
-        ORDER BY karma DESC
-        LIMIT 100
-    """)
-    
-    nodes = [{"id": a["name"], "karma": a["karma"], "followers": a["follower_count"]} for a in agents]
-    
-    # Get follow relationships
-    edges = await execute_query("""
-        SELECT follower_id, following_id
-        FROM follows
-    """)
-    
-    links = [{"source": e["follower_id"], "target": e["following_id"]} for e in edges]
-    
-    return {"nodes": nodes, "links": links}
+    import asyncio
+
+    agents, edges = await asyncio.gather(
+        execute_query("""
+            SELECT name, karma, follower_count
+            FROM agents WHERE karma > 0
+            ORDER BY karma DESC LIMIT 100
+        """),
+        execute_query("SELECT follower_id, following_id FROM follows"),
+    )
+
+    return JSONResponse({
+        "nodes": [{"id": a["name"], "karma": a["karma"], "followers": a["follower_count"]} for a in agents],
+        "links": [{"source": e["follower_id"], "target": e["following_id"]} for e in edges],
+    }, headers={"Cache-Control": _CC_STATIC})
 
 
 # ============ EXPORT ROUTES ============
@@ -581,29 +550,30 @@ async def export_posts_csv():
         SELECT id, agent_name, submolt, title, content, score, comment_count, created_at
         FROM posts ORDER BY created_at DESC
     """)
-    
-    # Convert rows to dicts, construct URLs, and sanitize content
+
     data = []
     for post in posts:
         row = dict(post)
         row["url"] = f"https://moltbook.com/post/{row['id']}"
-        # Remove embedded \r characters from text fields
         if row.get("content"):
             row["content"] = row["content"].replace('\r', '')
         if row.get("title"):
             row["title"] = row["title"].replace('\r', '')
         data.append(row)
-    
+
     output = io.StringIO(newline='')
     writer = csv.DictWriter(output, fieldnames=["id", "agent_name", "submolt", "title", "content", "url", "score", "comment_count", "created_at"], lineterminator='\n')
     writer.writeheader()
     writer.writerows(data)
-    
+
     output.seek(0)
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=moltbook_posts.csv"}
+        headers={
+            "Content-Disposition": "attachment; filename=moltbook_posts.csv",
+            "Cache-Control": _CC_NOSTORE,
+        }
     )
 
 
@@ -615,23 +585,25 @@ async def export_agents_csv():
                is_claimed, owner_x_handle, first_seen_at, created_at
         FROM agents ORDER BY karma DESC
     """)
-    
+
     output = io.StringIO(newline='')
     writer = csv.DictWriter(output, fieldnames=["name", "description", "karma", "follower_count", "following_count", "is_claimed", "owner_x_handle", "first_seen_at", "created_at"], lineterminator='\n')
     writer.writeheader()
-    
-    # Sanitize description field
+
     for agent in agents:
         row = dict(agent)
         if row.get("description"):
             row["description"] = row["description"].replace('\r', '')
         writer.writerow(row)
-    
+
     output.seek(0)
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=moltbook_agents.csv"}
+        headers={
+            "Content-Disposition": "attachment; filename=moltbook_agents.csv",
+            "Cache-Control": _CC_NOSTORE,
+        }
     )
 
 
@@ -642,25 +614,26 @@ async def export_comments_csv():
         SELECT id, post_id, agent_name, parent_id, content, score, created_at
         FROM comments ORDER BY created_at DESC
     """)
-    
+
     output = io.StringIO(newline='')
-    fieldnames = ["id", "post_id", "post_url", "agent_name", "parent_id", "content", "score", "created_at"]
-    writer = csv.DictWriter(output, fieldnames=fieldnames, lineterminator='\n')
+    writer = csv.DictWriter(output, fieldnames=["id", "post_id", "post_url", "agent_name", "parent_id", "content", "score", "created_at"], lineterminator='\n')
     writer.writeheader()
-    
+
     for comment in comments:
         row = dict(comment)
-        # Construct post URL and sanitize content
         row["post_url"] = f"https://moltbook.com/post/{row['post_id']}"
         if row.get("content"):
             row["content"] = row["content"].replace('\r', '')
         writer.writerow(row)
-    
+
     output.seek(0)
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=moltbook_comments.csv"}
+        headers={
+            "Content-Disposition": "attachment; filename=moltbook_comments.csv",
+            "Cache-Control": _CC_NOSTORE,
+        }
     )
 
 
@@ -671,36 +644,36 @@ async def export_database():
         return FileResponse(
             config.DATABASE_PATH,
             media_type="application/x-sqlite3",
-            filename="moltbook_observatory.db"
+            filename="moltbook_observatory.db",
+            headers={"Cache-Control": _CC_NOSTORE},
         )
-    return {"error": "Database not found"}, 404
+    return JSONResponse({"error": "Database not found"}, status_code=404)
 
 
 # ============ HTMX PARTIALS ============
 
 @router.get("/partials/feed", response_class=HTMLResponse)
 async def feed_partial(
-    request: Request, 
+    request: Request,
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100)
 ):
     """HTMX partial for feed updates with pagination."""
-    # Get total count
-    count_result = await execute_query("SELECT COUNT(*) as count FROM posts")
+    import asyncio
+
+    count_result, posts = await asyncio.gather(
+        execute_query("SELECT COUNT(*) as count FROM posts"),
+        execute_query("""
+            SELECT id, agent_name, submolt, title, content, score, comment_count, created_at
+            FROM posts
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
+        """, (per_page, (page - 1) * per_page)),
+    )
+
     total_posts = count_result[0]["count"] if count_result else 0
-    
-    # Calculate pagination
     total_pages = (total_posts + per_page - 1) // per_page if total_posts > 0 else 1
-    offset = (page - 1) * per_page
-    
-    # Get paginated posts
-    posts = await execute_query("""
-        SELECT id, agent_name, submolt, title, content, score, comment_count, created_at
-        FROM posts
-        ORDER BY created_at DESC
-        LIMIT ? OFFSET ?
-    """, (per_page, offset))
-    
+
     return templates.TemplateResponse("feed.html", {
         "request": request,
         "posts": posts,
@@ -709,7 +682,7 @@ async def feed_partial(
         "per_page": per_page,
         "total_posts": total_posts,
         "total_pages": total_pages,
-    })
+    }, headers={"Cache-Control": _CC_SHORT})
 
 
 @router.get("/search", response_class=HTMLResponse)
@@ -727,64 +700,47 @@ async def search_posts(
     per_page: int = Query(20, ge=1, le=100),
 ):
     """Search posts with multiple filters and pagination."""
-    # Build the WHERE clause dynamically
+    import asyncio
     where_conditions = []
     params = []
-    
-    # Text search in content and title
+
     if q:
         where_conditions.append("(content LIKE ? OR title LIKE ?)")
-        search_term = f"%{q}%"
-        params.extend([search_term, search_term])
-    
-    # Author filter
+        params.extend([f"%{q}%", f"%{q}%"])
     if author:
         where_conditions.append("agent_name LIKE ?")
         params.append(f"%{author}%")
-    
-    # Submolt filter
     if submolt:
         where_conditions.append("submolt = ?")
         params.append(submolt)
-    
-    # Date range filters
     if date_from:
         where_conditions.append("DATE(created_at) >= ?")
         params.append(date_from)
-    
     if date_to:
         where_conditions.append("DATE(created_at) <= ?")
         params.append(date_to)
-    
-    # Minimum score filter
     if min_score is not None:
         where_conditions.append("score >= ?")
         params.append(min_score)
-    
-    # Build the full query
+
     where_clause = f"WHERE {' AND '.join(where_conditions)}" if where_conditions else ""
     order_sql = "DESC" if order == "desc" else "ASC"
-    
-    # Get count of results
-    count_query = f"SELECT COUNT(*) as count FROM posts {where_clause}"
-    count_result = await execute_query(count_query, tuple(params))
-    total_results = count_result[0]["count"] if count_result else 0
-    
-    # Calculate pagination
-    total_pages = (total_results + per_page - 1) // per_page if total_results > 0 else 1
     offset = (page - 1) * per_page
-    
-    # Get paginated results
-    query = f"""
-        SELECT id, agent_name, submolt, title, content, score, comment_count, created_at
-        FROM posts
-        {where_clause}
-        ORDER BY {sort} {order_sql}
-        LIMIT ? OFFSET ?
-    """
-    
-    posts = await execute_query(query, tuple(params + [per_page, offset]))
-    
+
+    count_result, posts = await asyncio.gather(
+        execute_query(f"SELECT COUNT(*) as count FROM posts {where_clause}", tuple(params)),
+        execute_query(f"""
+            SELECT id, agent_name, submolt, title, content, score, comment_count, created_at
+            FROM posts
+            {where_clause}
+            ORDER BY {sort} {order_sql}
+            LIMIT ? OFFSET ?
+        """, tuple(params + [per_page, offset])),
+    )
+
+    total_results = count_result[0]["count"] if count_result else 0
+    total_pages = (total_results + per_page - 1) // per_page if total_results > 0 else 1
+
     return templates.TemplateResponse("search_results.html", {
         "request": request,
         "posts": posts,
@@ -803,18 +759,21 @@ async def search_posts(
             "sort": sort,
             "order": order,
         },
-    })
+    }, headers={"Cache-Control": _CC_NOSTORE})
 
 
 @router.get("/partials/stats", response_class=HTMLResponse)
 async def stats_partial(request: Request):
     """HTMX partial for stats updates."""
-    stats = await get_stats()
-    sentiment = await get_recent_sentiment(hours=24)
-    
+    import asyncio
+    stats, sentiment = await asyncio.gather(
+        get_stats(),
+        get_recent_sentiment(hours=24),
+    )
+
     return templates.TemplateResponse("stats_partial.html", {
         "request": request,
         "stats": stats,
         "sentiment": sentiment,
         "config": config,
-    })
+    }, headers={"Cache-Control": _CC_SHORT})
