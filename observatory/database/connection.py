@@ -1,23 +1,21 @@
 """Database connection handling."""
 
 import aiosqlite
-from pathlib import Path
 from observatory.config import config
 
-# Global database connection
+
+# Global write connection (shared by poller/writer)
 _db: aiosqlite.Connection | None = None
 
 
 async def get_db() -> aiosqlite.Connection:
-    """Get the database connection, creating it if necessary."""
+    """Get the shared write connection, creating it if necessary."""
     global _db
     if _db is None:
         config.ensure_data_dir()
         _db = await aiosqlite.connect(config.DATABASE_PATH)
         _db.row_factory = aiosqlite.Row
-        # Enable foreign keys
         await _db.execute("PRAGMA foreign_keys = ON")
-        # Performance optimizations
         await _db.execute("PRAGMA journal_mode = WAL")
         await _db.execute("PRAGMA synchronous = NORMAL")
         await _db.execute("PRAGMA cache_size = -64000")  # 64MB cache
@@ -28,7 +26,7 @@ async def get_db() -> aiosqlite.Connection:
 
 
 async def close_db() -> None:
-    """Close the database connection."""
+    """Close the write connection."""
     global _db
     if _db is not None:
         await _db.close()
@@ -36,11 +34,20 @@ async def close_db() -> None:
 
 
 async def execute_query(query: str, params: tuple = ()) -> list[dict]:
-    """Execute a query and return results as list of dicts."""
-    db = await get_db()
-    async with db.execute(query, params) as cursor:
-        rows = await cursor.fetchall()
-        return [dict(row) for row in rows]
+    """Execute a read-only query using a short-lived read-only connection.
+
+    Opens a separate connection so WAL-mode concurrent reads are never
+    blocked by an in-progress write transaction on the shared write connection.
+    """
+    db_uri = f"file:{config.DATABASE_PATH}?mode=ro"
+    async with aiosqlite.connect(db_uri, uri=True) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute("PRAGMA journal_mode = WAL")
+        await db.execute("PRAGMA cache_size = -16000")  # 16MB cache
+        await db.execute("PRAGMA temp_store = MEMORY")
+        async with db.execute(query, params) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
 
 
 async def execute_insert(query: str, params: tuple = ()) -> int:
