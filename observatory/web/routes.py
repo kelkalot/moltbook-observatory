@@ -16,6 +16,7 @@ from observatory.analyzer.stats import (
 from observatory.analyzer.trends import get_trending_words, get_top_words, get_word_history
 from observatory.analyzer.sentiment import get_recent_sentiment
 from observatory.config import config
+from observatory.cache import get_cache
 
 router = APIRouter()
 
@@ -37,18 +38,25 @@ _CC_NOSTORE = "no-store"                             # exports, search, refresh
 async def index(request: Request):
     """Main dashboard page."""
     import asyncio
-    stats, sentiment, trends, new_agents, posts = await asyncio.gather(
-        get_stats(),
-        get_recent_sentiment(hours=24),
-        get_trending_words(hours=24, limit=5),
-        get_new_agents_today(),
-        execute_query("""
-            SELECT id, agent_name, submolt, title, content, score, comment_count, created_at
-            FROM posts
-            ORDER BY created_at DESC
-            LIMIT 20
-        """)
-    )
+
+    cache = get_cache()
+    cached = cache.get("index:dashboard")
+    if cached is not None:
+        stats, sentiment, trends, new_agents, posts = cached
+    else:
+        stats, sentiment, trends, new_agents, posts = await asyncio.gather(
+            get_stats(),
+            get_recent_sentiment(hours=24),
+            get_trending_words(hours=24, limit=5),
+            get_new_agents_today(),
+            execute_query("""
+                SELECT id, agent_name, submolt, title, content, score, comment_count, created_at
+                FROM posts
+                ORDER BY created_at DESC
+                LIMIT 20
+            """)
+        )
+        cache.set("index:dashboard", (stats, sentiment, trends, new_agents, posts), ttl_seconds=30)
 
     return templates.TemplateResponse("index.html", {
         "request": request,
@@ -120,7 +128,11 @@ async def agent_profile(
     """Individual agent profile page."""
     import asyncio
 
+    cache = get_cache()
+    cache_key = f"agent_profile:{name}"
+
     if refresh:
+        cache.clear(cache_key)
         try:
             from observatory.poller.client import get_client
             from observatory.poller.processors import process_agent_profile
@@ -130,31 +142,37 @@ async def agent_profile(
         except Exception as e:
             print(f"Failed to refresh agent {name}: {e}")
 
-    agent, post_count_result, posts = await asyncio.gather(
-        execute_query("""
-            SELECT name, description, karma, follower_count, following_count,
-                   is_claimed, owner_x_handle, first_seen_at, last_seen_at, created_at, avatar_url
-            FROM agents WHERE name = ?
-        """, (name,)),
-        execute_query("SELECT COUNT(*) as count FROM posts WHERE agent_name = ?", (name,)),
-        execute_query("""
-            SELECT id, submolt, title, content, score, comment_count, created_at
-            FROM posts
-            WHERE agent_name = ?
-            ORDER BY created_at DESC
-            LIMIT 20
-        """, (name,)),
-    )
+    cached = cache.get(cache_key)
+    if cached is not None:
+        agent_data, posts = cached
+    else:
+        agent, post_count_result, posts = await asyncio.gather(
+            execute_query("""
+                SELECT name, description, karma, follower_count, following_count,
+                       is_claimed, owner_x_handle, first_seen_at, last_seen_at, created_at, avatar_url
+                FROM agents WHERE name = ?
+            """, (name,)),
+            execute_query("SELECT COUNT(*) as count FROM posts WHERE agent_name = ?", (name,)),
+            execute_query("""
+                SELECT id, submolt, title, content, score, comment_count, created_at
+                FROM posts
+                WHERE agent_name = ?
+                ORDER BY created_at DESC
+                LIMIT 20
+            """, (name,)),
+        )
 
-    if not agent:
-        return templates.TemplateResponse("404.html", {
-            "request": request,
-            "message": f"Agent @{name} not found",
-            "config": config,
-        }, status_code=404)
+        if not agent:
+            return templates.TemplateResponse("404.html", {
+                "request": request,
+                "message": f"Agent @{name} not found",
+                "config": config,
+            }, status_code=404)
 
-    agent_data = dict(agent[0])
-    agent_data["post_count"] = post_count_result[0]["count"] if post_count_result else 0
+        agent_data = dict(agent[0])
+        agent_data["post_count"] = post_count_result[0]["count"] if post_count_result else 0
+        if not refresh:
+            cache.set(cache_key, (agent_data, posts), ttl_seconds=120)
 
     cc = _CC_NOSTORE if refresh else _CC_LONG
     return templates.TemplateResponse("agent.html", {
@@ -170,17 +188,26 @@ async def post_detail(request: Request, post_id: str):
     """Individual post detail page."""
     import asyncio
 
-    post, comments = await asyncio.gather(
-        execute_query("""
-            SELECT id, agent_name, submolt, title, content, score, comment_count, created_at
-            FROM posts WHERE id = ?
-        """, (post_id,)),
-        execute_query("""
-            SELECT id, agent_name, parent_id, content, score, created_at
-            FROM comments WHERE post_id = ?
-            ORDER BY created_at DESC LIMIT 50
-        """, (post_id,)),
-    )
+    cache = get_cache()
+    cache_key = f"post_detail:{post_id}"
+    cached = cache.get(cache_key)
+
+    if cached is not None:
+        post, comments = cached
+    else:
+        post, comments = await asyncio.gather(
+            execute_query("""
+                SELECT id, agent_name, submolt, title, content, score, comment_count, created_at
+                FROM posts WHERE id = ?
+            """, (post_id,)),
+            execute_query("""
+                SELECT id, agent_name, parent_id, content, score, created_at
+                FROM comments WHERE post_id = ?
+                ORDER BY created_at DESC LIMIT 50
+            """, (post_id,)),
+        )
+        if post:
+            cache.set(cache_key, (post, comments), ttl_seconds=300)
 
     if not post:
         return templates.TemplateResponse("404.html", {
@@ -256,7 +283,11 @@ async def submolt_detail(
     """Individual submolt detail page."""
     import asyncio
 
+    cache = get_cache()
+    cache_key = f"submolt_detail:{name}"
+
     if refresh:
+        cache.clear(cache_key)
         try:
             from observatory.poller.client import get_client
             from observatory.database.connection import get_db
@@ -279,29 +310,35 @@ async def submolt_detail(
         except Exception as e:
             print(f"Failed to refresh submolt {name}: {e}")
 
-    submolt, actual_post_count_result, posts = await asyncio.gather(
-        execute_query("""
-            SELECT name, display_name, description, subscriber_count, post_count,
-                   created_at, first_seen_at, avatar_url, banner_url
-            FROM submolts WHERE name = ?
-        """, (name,)),
-        execute_query("SELECT COUNT(*) as count FROM posts WHERE submolt = ?", (name,)),
-        execute_query("""
-            SELECT id, agent_name, title, content, score, comment_count, created_at
-            FROM posts WHERE submolt = ?
-            ORDER BY created_at DESC LIMIT 20
-        """, (name,)),
-    )
+    cached = cache.get(cache_key)
+    if cached is not None:
+        submolt_data, posts = cached
+    else:
+        submolt, actual_post_count_result, posts = await asyncio.gather(
+            execute_query("""
+                SELECT name, display_name, description, subscriber_count, post_count,
+                       created_at, first_seen_at, avatar_url, banner_url
+                FROM submolts WHERE name = ?
+            """, (name,)),
+            execute_query("SELECT COUNT(*) as count FROM posts WHERE submolt = ?", (name,)),
+            execute_query("""
+                SELECT id, agent_name, title, content, score, comment_count, created_at
+                FROM posts WHERE submolt = ?
+                ORDER BY created_at DESC LIMIT 20
+            """, (name,)),
+        )
 
-    if not submolt:
-        return templates.TemplateResponse("404.html", {
-            "request": request,
-            "message": f"Submolt m/{name} not found",
-            "config": config,
-        }, status_code=404)
+        if not submolt:
+            return templates.TemplateResponse("404.html", {
+                "request": request,
+                "message": f"Submolt m/{name} not found",
+                "config": config,
+            }, status_code=404)
 
-    submolt_data = dict(submolt[0])
-    submolt_data["post_count"] = actual_post_count_result[0]["count"] if actual_post_count_result else 0
+        submolt_data = dict(submolt[0])
+        submolt_data["post_count"] = actual_post_count_result[0]["count"] if actual_post_count_result else 0
+        if not refresh:
+            cache.set(cache_key, (submolt_data, posts), ttl_seconds=120)
 
     cc = _CC_NOSTORE if refresh else _CC_LONG
     return templates.TemplateResponse("submolt.html", {
@@ -320,12 +357,19 @@ async def trends_page(
     """Trends and topic analysis page."""
     import asyncio
 
-    trends, top_words, sentiment, snapshots = await asyncio.gather(
-        get_trending_words(hours=hours, limit=10),
-        get_top_words(hours=hours, limit=10),
-        get_recent_sentiment(hours=hours),
-        get_snapshot_history(hours=hours)
-    )
+    cache = get_cache()
+    cache_key = f"trends_page:{hours}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        trends, top_words, sentiment, snapshots = cached
+    else:
+        trends, top_words, sentiment, snapshots = await asyncio.gather(
+            get_trending_words(hours=hours, limit=10),
+            get_top_words(hours=hours, limit=10),
+            get_recent_sentiment(hours=hours),
+            get_snapshot_history(hours=hours)
+        )
+        cache.set(cache_key, (trends, top_words, sentiment, snapshots), ttl_seconds=120)
 
     return templates.TemplateResponse("trends.html", {
         "request": request,
@@ -344,12 +388,19 @@ async def analytics_page(request: Request):
     import asyncio
     import math
 
-    top_posters, activity_by_hour, submolt_activity, stats = await asyncio.gather(
-        get_top_posters(limit=15),
-        get_activity_by_hour(),
-        get_submolt_activity(limit=15),
-        get_stats()
-    )
+    cache = get_cache()
+    cache_key = "analytics_page"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        top_posters, activity_by_hour, submolt_activity, stats = cached
+    else:
+        top_posters, activity_by_hour, submolt_activity, stats = await asyncio.gather(
+            get_top_posters(limit=15),
+            get_activity_by_hour(),
+            get_submolt_activity(limit=15),
+            get_stats()
+        )
+        cache.set(cache_key, (top_posters, activity_by_hour, submolt_activity, stats), ttl_seconds=120)
 
     hours_data = {h["hour"]: h["post_count"] for h in activity_by_hour}
     max_posts = max(hours_data.values()) if hours_data else 1
@@ -416,10 +467,18 @@ async def api_feed(
 async def api_stats():
     """Get current platform statistics."""
     import asyncio
-    stats, sentiment = await asyncio.gather(
-        get_stats(),
-        get_recent_sentiment(hours=24),
-    )
+
+    cache = get_cache()
+    cached = cache.get("api:stats")
+    if cached is not None:
+        stats, sentiment = cached
+    else:
+        stats, sentiment = await asyncio.gather(
+            get_stats(),
+            get_recent_sentiment(hours=24),
+        )
+        cache.set("api:stats", (stats, sentiment), ttl_seconds=60)
+
     return JSONResponse({**stats, "sentiment": sentiment},
                         headers={"Cache-Control": _CC_MEDIUM})
 
@@ -427,7 +486,13 @@ async def api_stats():
 @router.get("/api/trends")
 async def api_trends(hours: int = Query(24, ge=1, le=720)):
     """Get trending words."""
-    trends = await get_trending_words(hours=hours, limit=10)
+    cache = get_cache()
+    cache_key = f"api:trends:{hours}"
+    trends = cache.get(cache_key)
+    if trends is None:
+        trends = await get_trending_words(hours=hours, limit=10)
+        cache.set(cache_key, trends, ttl_seconds=120)
+
     return JSONResponse({"trends": trends, "period_hours": hours},
                         headers={"Cache-Control": _CC_LONG})
 
@@ -446,13 +511,18 @@ async def api_agents(
     sort: str = Query("karma", pattern="^(karma|name|follower_count)$"),
 ):
     """Get all agents."""
-    order = "DESC" if sort in ("karma", "follower_count") else "ASC"
-    agents = await execute_query(f"""
-        SELECT name, description, karma, follower_count, following_count, is_claimed
-        FROM agents
-        ORDER BY {sort} {order}
-        LIMIT ?
-    """, (limit,))
+    cache = get_cache()
+    cache_key = f"api:agents:{sort}:{limit}"
+    agents = cache.get(cache_key)
+    if agents is None:
+        order = "DESC" if sort in ("karma", "follower_count") else "ASC"
+        agents = await execute_query(f"""
+            SELECT name, description, karma, follower_count, following_count, is_claimed
+            FROM agents
+            ORDER BY {sort} {order}
+            LIMIT ?
+        """, (limit,))
+        cache.set(cache_key, agents, ttl_seconds=60)
 
     return JSONResponse({"agents": agents, "count": len(agents)},
                         headers={"Cache-Control": _CC_MEDIUM})
@@ -463,34 +533,48 @@ async def api_agent(name: str):
     """Get single agent details."""
     import asyncio
 
-    agent, posts = await asyncio.gather(
-        execute_query("""
-            SELECT name, description, karma, follower_count, following_count,
-                   is_claimed, owner_x_handle, first_seen_at, last_seen_at, created_at
-            FROM agents WHERE name = ?
-        """, (name,)),
-        execute_query("""
-            SELECT id, submolt, title, score, comment_count, created_at
-            FROM posts WHERE agent_name = ?
-            ORDER BY created_at DESC LIMIT 10
-        """, (name,)),
-    )
+    cache = get_cache()
+    cache_key = f"api:agent:{name}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        agent_data, posts = cached
+    else:
+        agent, posts = await asyncio.gather(
+            execute_query("""
+                SELECT name, description, karma, follower_count, following_count,
+                       is_claimed, owner_x_handle, first_seen_at, last_seen_at, created_at
+                FROM agents WHERE name = ?
+            """, (name,)),
+            execute_query("""
+                SELECT id, submolt, title, score, comment_count, created_at
+                FROM posts WHERE agent_name = ?
+                ORDER BY created_at DESC LIMIT 10
+            """, (name,)),
+        )
 
-    if not agent:
-        return JSONResponse({"error": "Agent not found"}, status_code=404)
+        if not agent:
+            return JSONResponse({"error": "Agent not found"}, status_code=404)
 
-    return JSONResponse({"agent": agent[0], "recent_posts": posts},
+        agent_data = agent[0]
+        cache.set(cache_key, (agent_data, posts), ttl_seconds=120)
+
+    return JSONResponse({"agent": agent_data, "recent_posts": posts},
                         headers={"Cache-Control": _CC_LONG})
 
 
 @router.get("/api/submolts")
 async def api_submolts():
     """Get all submolts."""
-    submolts = await execute_query("""
-        SELECT name, display_name, description, subscriber_count, post_count
-        FROM submolts
-        ORDER BY subscriber_count DESC
-    """)
+    cache = get_cache()
+    submolts = cache.get("api:submolts")
+    if submolts is None:
+        submolts = await execute_query("""
+            SELECT name, display_name, description, subscriber_count, post_count
+            FROM submolts
+            ORDER BY subscriber_count DESC
+        """)
+        cache.set("api:submolts", submolts, ttl_seconds=120)
+
     return JSONResponse({"submolts": submolts},
                         headers={"Cache-Control": _CC_LONG})
 
@@ -526,14 +610,20 @@ async def api_graph():
     """Get social graph data for visualization."""
     import asyncio
 
-    agents, edges = await asyncio.gather(
-        execute_query("""
-            SELECT name, karma, follower_count
-            FROM agents WHERE karma > 0
-            ORDER BY karma DESC LIMIT 100
-        """),
-        execute_query("SELECT follower_id, following_id FROM follows"),
-    )
+    cache = get_cache()
+    cached = cache.get("api:graph")
+    if cached is not None:
+        agents, edges = cached
+    else:
+        agents, edges = await asyncio.gather(
+            execute_query("""
+                SELECT name, karma, follower_count
+                FROM agents WHERE karma > 0
+                ORDER BY karma DESC LIMIT 100
+            """),
+            execute_query("SELECT follower_id, following_id FROM follows"),
+        )
+        cache.set("api:graph", (agents, edges), ttl_seconds=300)
 
     return JSONResponse({
         "nodes": [{"id": a["name"], "karma": a["karma"], "followers": a["follower_count"]} for a in agents],
