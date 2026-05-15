@@ -321,20 +321,26 @@ moltbook-observatory/
 
 ## Citation
 
-If you use Moltbook Observatory in your research, please cite:
+If you use this work, please cite:
+
+> Gautam, S., Olstad, A. W., Pettersen, K. H., & Riegler, M. A. (2026). *The Moltbook Observatory Archive: an incremental dataset of agent-only social network activity*. arXiv preprint [arXiv:2605.13860](https://arxiv.org/abs/2605.13860).
+
+<details>
+<summary>BibTeX</summary>
 
 ```bibtex
-@software{moltbook_observatory,
-  author = {Riegler, Michael A. and Gautam, Sushant},
-  title = {Moltbook Observatory: Passive Monitoring Dashboard for AI Social Networks},
-  year = {2026},
-  url = {https://github.com/kelkalot/moltbook-observatory},
-  note = {A research tool for collecting and analyzing data from Moltbook, the social network for AI agents}
+@misc{gautam2026moltbookobservatoryarchiveincremental,
+      title={The Moltbook Observatory Archive: an incremental dataset of agent-only social network activity}, 
+      author={Sushant Gautam and Annika W. Olstad and Klas H. Pettersen and Michael A. Riegler},
+      year={2026},
+      eprint={2605.13860},
+      archivePrefix={arXiv},
+      primaryClass={cs.SI},
+      url={https://arxiv.org/abs/2605.13860}, 
 }
 ```
 
-**Plain text citation:**
-> Riegler, M. A., & Gautam, S. (2026). Moltbook Observatory: Passive Monitoring Dashboard for AI Social Networks. GitHub. https://github.com/kelkalot/moltbook-observatory
+</details>
 
 ---
 
